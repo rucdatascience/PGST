@@ -27,11 +27,14 @@ using namespace std;
 #include <boost/random.hpp>
 boost::random::mt19937 boost_random_time_seed{ static_cast<std::uint32_t>(std::time(0)) };
 
+
+
 /*some other header files*/
 #include <graph_hash_of_mixed_weighted/graph_hash_of_mixed_weighted.h>
 #include <graph_hash_of_mixed_weighted/graph_hash_of_mixed_weighted_connected_components.h>
 #include <graph_hash_of_mixed_weighted/graph_hash_of_mixed_weighted_extract_subgraph.h>
-#include <graph_hash_of_mixed_weighted/graph_hash_of_mixed_weighted_PLL.h>
+#include <graph_hash_of_mixed_weighted/graph_hash_of_mixed_weighted_PLL_single_thread.h>
+#include <graph_hash_of_mixed_weighted/graph_hash_of_mixed_weighted_PLL_multiple_threads.h>
 #include <graph_hash_of_mixed_weighted/graph_hash_of_mixed_weighted_merge_graph_hash_of_mixed_weighted.h>
 #include <graph_hash_of_mixed_weighted/graph_hash_of_mixed_weighted_nw_ec_normalization.h>
 #include <graph_hash_of_mixed_weighted/graph_hash_of_mixed_weighted_PLL_labels.h>
@@ -55,7 +58,6 @@ boost::random::mt19937 boost_random_time_seed{ static_cast<std::uint32_t>(std::t
 #include <graph_v_of_v_idealID/graph_v_of_v_idealID_DPBF_only_ec.h>
 #include <graph_v_of_v_idealID/graph_v_of_v_idealID_breadth_first_search_a_set_of_vertices.h>
 #include <graph_v_of_v_idealID/graph_v_of_v_idealID_MST_postprocessing.h>
-
 
 
 
@@ -1079,7 +1081,8 @@ void add_a_new_vertex_update_not_cover_probabilities_graph_v_of_v_idealID(std::u
 }
 
 graph_hash_of_mixed_weighted algo3_GREPATH_graph_v_of_v_idealID(graph_v_of_v_idealID& input_graph, graph_v_of_v_idealID& group_graph,
-	std::unordered_set<int>& cumpulsory_group_vertices, double b, double tau, vector<vector<PLL_sorted_label>>& PLL_indexes, vector<int>& graph_id_2_PLL_id, vector<int>& PLL_id_2_graph_id) {
+	std::unordered_set<int>& cumpulsory_group_vertices, double b, double tau, 
+	vector<vector<PLL_sorted_label>>& PLL_indexes, vector<int>& graph_id_2_PLL_id, vector<int>& PLL_id_2_graph_id) {
 
 	graph_hash_of_mixed_weighted solu_tree;
 	double solu_tree_weight = INT_MAX;
@@ -1125,6 +1128,9 @@ graph_hash_of_mixed_weighted algo3_GREPATH_graph_v_of_v_idealID(graph_v_of_v_ide
 			while (1 - not_cover_probabilities[*it] + 1e-8 < b) {
 				algo3_GREPATH_min_heap_node top_node = heaps[*it].top();
 				heaps[*it].pop();
+
+				/*the following merge time complexity is not L*V throught the loop;
+				since you cannot just extract not-merged path from PLL; and you need to extract the whole shortest path, you cannot reduce the merge time complexity to O(V)*/
 				vector<pair<int, int>> edges = PLL_extract_shortest_path_vectorFORMAT(PLL_indexes, v_PLL_id, graph_id_2_PLL_id[top_node.u]);
 				for (int j = edges.size() - 1; j >= 0; j--) {
 					int v1 = PLL_id_2_graph_id[edges[j].first], v2 = PLL_id_2_graph_id[edges[j].second];
@@ -1137,6 +1143,7 @@ graph_hash_of_mixed_weighted algo3_GREPATH_graph_v_of_v_idealID(graph_v_of_v_ide
 					double ec = graph_v_of_v_idealID_edge_weight(input_graph, v1, v2);
 					graph_hash_of_mixed_weighted_add_edge(Theta_v, v1, v2, ec);
 				}
+
 			}
 		}
 
@@ -1158,6 +1165,23 @@ graph_hash_of_mixed_weighted algo3_GREPATH_graph_v_of_v_idealID(graph_v_of_v_ide
 	return solu_tree;
 }
 #pragma endregion algo3_GREPATH_graph_v_of_v_idealID
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1532,12 +1556,13 @@ void produce_small_graphs_for_experiments_element(string data_name, string save_
 	std::unordered_set<int> old_group_vertices;
 	graph_hash_of_mixed_weighted old_read_graph, old_read_group_graph;
 	if (data_name == "dblp") {
-		if (one_edge_weight) {
-			read_dblp_v12(old_read_graph, old_read_group_graph, old_group_vertices, "2498k");
-		}
-		else {
-			read_dblp_v12(old_read_graph, old_read_group_graph, old_group_vertices, "1248k");
-		}
+		read_dblp_v12(old_read_graph, old_read_group_graph, old_group_vertices, "2498k");
+		//if (one_edge_weight) {
+		//	read_dblp_v12(old_read_graph, old_read_group_graph, old_group_vertices, "2498k");
+		//}
+		//else {
+		//	read_dblp_v12(old_read_graph, old_read_group_graph, old_group_vertices, "1248k");
+		//}
 	}
 	else if (data_name == "movie") {
 		std::unordered_map<int, string> movie_names, genres_names;
@@ -1595,8 +1620,12 @@ void produce_small_graphs_for_experiments_element(string data_name, string save_
 
 	}
 
+	cout << "old_read_graph.hash_of_vectors.size(): " << old_read_graph.hash_of_vectors.size() << endl;
+
 	graph_hash_of_mixed_weighted_binary_save(old_read_graph, save_read_graph_name);
 	graph_hash_of_mixed_weighted_binary_save(old_read_group_graph, save_read_group_graph_name);
+
+	cout << "graph_hash_of_mixed_weighted_binary_save end" << endl;
 
 	/*check results*/
 	graph_hash_of_mixed_weighted read_graph = graph_hash_of_mixed_weighted_binary_read(save_read_graph_name);
@@ -1619,6 +1648,13 @@ void produce_binary_graph_files_for_experiments() {
 	int pool_size = 9;
 	ThreadPool pool(pool_size); // use pool_size threads
 	std::vector< std::future<int> > results;
+
+	//string data_name = "dblp";
+	//int V = 2497782;
+	//bool one_edge_weight = false;
+	//results.emplace_back(pool.enqueue([data_name, V, one_edge_weight] {
+	//	produce_small_graphs_for_experiments_element(data_name, data_name + "_read_graph_" + to_string(V) + ".bin", data_name + "_read_group_graph_" + to_string(V) + ".bin", V, one_edge_weight);
+	//	return 1; }));
 
 	/* Jacard distance */
 	if (0) {
@@ -1648,11 +1684,15 @@ void produce_binary_graph_files_for_experiments() {
 			results.emplace_back(pool.enqueue([data_name, V, one_edge_weight] {
 				produce_small_graphs_for_experiments_element(data_name, data_name + "_read_graph_" + to_string(V) + ".bin", data_name + "_read_group_graph_" + to_string(V) + ".bin", V, one_edge_weight);
 				return 1; }));
-			V = 848891;
-			results.emplace_back(pool.enqueue([data_name, V, one_edge_weight] {
-				produce_small_graphs_for_experiments_element(data_name, data_name + "_read_graph_" + to_string(V) + ".bin", data_name + "_read_group_graph_" + to_string(V) + ".bin", V, one_edge_weight);
-				return 1; }));
-			V = 1248891;
+			//V = 848891;
+			//results.emplace_back(pool.enqueue([data_name, V, one_edge_weight] {
+			//	produce_small_graphs_for_experiments_element(data_name, data_name + "_read_graph_" + to_string(V) + ".bin", data_name + "_read_group_graph_" + to_string(V) + ".bin", V, one_edge_weight);
+			//	return 1; }));
+			//V = 1248891;
+			//results.emplace_back(pool.enqueue([data_name, V, one_edge_weight] {
+			//	produce_small_graphs_for_experiments_element(data_name, data_name + "_read_graph_" + to_string(V) + ".bin", data_name + "_read_group_graph_" + to_string(V) + ".bin", V, one_edge_weight);
+			//	return 1; }));
+			V = 2497782;
 			results.emplace_back(pool.enqueue([data_name, V, one_edge_weight] {
 				produce_small_graphs_for_experiments_element(data_name, data_name + "_read_graph_" + to_string(V) + ".bin", data_name + "_read_group_graph_" + to_string(V) + ".bin", V, one_edge_weight);
 				return 1; }));
@@ -1677,7 +1717,7 @@ void produce_binary_graph_files_for_experiments() {
 	}
 
 	/* one_edge_weight */
-	if (1) {
+	if (0) {
 		bool one_edge_weight = true;
 
 		/*amazon*/
@@ -1697,7 +1737,7 @@ void produce_binary_graph_files_for_experiments() {
 				return 1; }));
 		}
 
-		/*dblp 1248k*/
+		/*dblp*/
 		if (1) {
 			string data_name = "dblp";
 			int V = 897782;
@@ -1738,13 +1778,13 @@ void produce_binary_graph_files_for_experiments() {
 
 
 /*global PLL data; 120 GB*/
-int global_dblp_1248891_PLL_indexes_loaded = 0, global_dblp_848891_PLL_indexes_loaded = 0, global_dblp_448891_PLL_indexes_loaded = 0, 
+int global_dblp_2497782_PLL_indexes_loaded = 0, global_dblp_1248891_PLL_indexes_loaded = 0, global_dblp_848891_PLL_indexes_loaded = 0, global_dblp_448891_PLL_indexes_loaded = 0,
 global_movie_PLL_indexes_loaded = 0, global_amazon_PLL_indexes_loaded = 0,
 global_dblp_one_edge_weight_2497782_PLL_indexes_loaded = 0, global_dblp_one_edge_weight_1697782_PLL_indexes_loaded = 0, global_dblp_one_edge_weight_897782_PLL_indexes_loaded = 0,
 global_movie_one_edge_weight_PLL_indexes_loaded = 0, global_amazon_one_edge_weight_PLL_indexes_loaded = 0; // 0 means is not loading, 1 means is loading, 2 means loaded
 
 
-vector<vector<PLL_sorted_label>> global_dblp_1248891_PLL_indexes, global_dblp_848891_PLL_indexes, global_dblp_448891_PLL_indexes,
+vector<vector<PLL_sorted_label>> global_dblp_2497782_PLL_indexes, global_dblp_1248891_PLL_indexes, global_dblp_848891_PLL_indexes, global_dblp_448891_PLL_indexes,
 global_movie_62423_PLL_indexes, global_movie_42423_PLL_indexes, global_movie_22423_PLL_indexes,
 global_amazon_548552_PLL_indexes, global_amazon_368552_PLL_indexes, global_amazon_188552_PLL_indexes,
 global_dblp_one_edge_weight_2497782_PLL_indexes, global_dblp_one_edge_weight_1697782_PLL_indexes, global_dblp_one_edge_weight_897782_PLL_indexes,
@@ -1755,36 +1795,36 @@ int max_N_for_exp = 2.5e6;
 
 #ifdef _WIN32
 string binary_file_root_path = "F://PLL";
-#endif
-
-#ifdef linux
+#else 
 string binary_file_root_path = "PLL";
 #endif
 
+
+
+/*generate PLL labels for experiments*/
 #pragma region
-void generate_binary_PLL_indexes_element(string data_name, int V, bool one_edge_weight) {
+void generate_binary_PLL_indexes_element(string data_name, int V, bool one_edge_weight, int pool_size_for_PLL_code) {
 
 	graph_hash_of_mixed_weighted read_graph;
 	string graph_file_name, save_PLL_file_name;
 	if (one_edge_weight) {
 		graph_file_name = binary_file_root_path + "//" + data_name + "_read_graph_one_edge_weight_" + to_string(V) + ".bin";
 		save_PLL_file_name = "PLL_binary_" + data_name + "_one_edge_weight_" + to_string(V) + ".txt";
-		read_graph = graph_hash_of_mixed_weighted_binary_read(graph_file_name);
-		PLL_generate_and_save_indexes_vectorFORMAT_binary_one_edge_weight(read_graph, save_PLL_file_name, max_N_for_exp);
 	}
 	else {
 		graph_file_name = binary_file_root_path + "//" + data_name + "_read_graph_" + to_string(V) + ".bin";
-		save_PLL_file_name = "PLL_binary_" + data_name + "_" + to_string(V) + ".txt";
-		read_graph = graph_hash_of_mixed_weighted_binary_read(graph_file_name);
-		PLL_generate_and_save_indexes_vectorFORMAT_binary(read_graph, save_PLL_file_name, max_N_for_exp);
+		save_PLL_file_name = "PLL_binary_" + data_name + "_" + to_string(V) + ".txt";	
 	}
-
+	read_graph = graph_hash_of_mixed_weighted_binary_read(graph_file_name);
+	PLL_generate_and_save_indexes_multiple_threads(read_graph, save_PLL_file_name, max_N_for_exp, !one_edge_weight, pool_size_for_PLL_code);
 
 	/*test*/
 	vector<vector<PLL_sorted_label>> L = PLL_read_indexes_vectorFORMAT_binary(save_PLL_file_name);
 	int iteration_source_times = 10, iteration_terminal_times = 100;
-	boost::random::uniform_int_distribution<> dist{ static_cast<int>(0), static_cast<int>(V) };
 
+	boost::random::uniform_int_distribution<> dist{ static_cast<int>(0), static_cast<int>(read_graph.hash_of_vectors.size() -1) };
+
+	/*the following code cannot be replaced with check_correctness_of_PLL_labels, since some vertices smaller than V-1 is not in the graph*/
 	for (int yy = 0; yy < iteration_source_times; yy++) {
 		int source = dist(boost_random_time_seed);
 
@@ -1800,6 +1840,7 @@ void generate_binary_PLL_indexes_element(string data_name, int V, bool one_edge_
 		std::unordered_map<int, double> distances;
 		std::unordered_map<int, int> predecessors;
 		graph_hash_of_mixed_weighted_shortest_paths_source_to_all(read_graph, source, distances, predecessors);
+
 		for (int xx = 0; xx < iteration_terminal_times; xx++) {
 			int terminal = dist(boost_random_time_seed);
 
@@ -1811,7 +1852,6 @@ void generate_binary_PLL_indexes_element(string data_name, int V, bool one_edge_
 				}
 				mm++;
 			}
-
 			double dis = PLL_extract_distance_vectorFORMAT(L, source, terminal);
 			if (abs(dis - distances[terminal]) > 1e-5) {
 				cout << "source = " << source << endl;
@@ -1874,19 +1914,18 @@ void generate_binary_PLL_indexes_element(string data_name, int V, bool one_edge_
 
 	}
 
-
 }
 #pragma endregion generate_binary_PLL_indexes_element
 
 #pragma region
 void generate_binary_PLL_indexes() {
 
-	int pool_size = 6;
-	ThreadPool pool(pool_size); // use pool_size threads
-	std::vector< std::future<int> > results;
+	int pool_size_for_PLL_code = 50;
 
-
-	
+	string data_name = "dblp";
+	bool one_edge_weight = false;
+	int V = 2497782;
+	generate_binary_PLL_indexes_element(data_name, V, one_edge_weight, pool_size_for_PLL_code);
 
 	/*Jacard dis*/
 	if (0) {
@@ -1896,96 +1935,56 @@ void generate_binary_PLL_indexes() {
 		if (1) {
 			string data_name = "amazon";
 			int V = 188552;
-			results.emplace_back(pool.enqueue([data_name, V, one_edge_weight] {
-				generate_binary_PLL_indexes_element(data_name, V, one_edge_weight);
-				return 1; }));
-			V = 368552;
-			results.emplace_back(pool.enqueue([data_name, V, one_edge_weight] {
-				generate_binary_PLL_indexes_element(data_name, V, one_edge_weight);
-				return 1; }));
+			generate_binary_PLL_indexes_element(data_name, V, one_edge_weight, pool_size_for_PLL_code);
 			V = 548552;
-			results.emplace_back(pool.enqueue([data_name, V, one_edge_weight] {
-				generate_binary_PLL_indexes_element(data_name, V, one_edge_weight);
-				return 1; }));
+			generate_binary_PLL_indexes_element(data_name, V, one_edge_weight, pool_size_for_PLL_code);
 		}
 
 		/*movie*/
 		if (1) {
 			string data_name = "movie";
-			int V = 22423;
-			results.emplace_back(pool.enqueue([data_name, V, one_edge_weight] {
-				generate_binary_PLL_indexes_element(data_name, V, one_edge_weight);
-				return 1; }));
-			V = 42423;
-			results.emplace_back(pool.enqueue([data_name, V, one_edge_weight] {
-				generate_binary_PLL_indexes_element(data_name, V, one_edge_weight);
-				return 1; }));
-			V = 62423;
-			results.emplace_back(pool.enqueue([data_name, V, one_edge_weight] {
-				generate_binary_PLL_indexes_element(data_name, V, one_edge_weight);
-				return 1; }));
+			int V = 62423;
+			generate_binary_PLL_indexes_element(data_name, V, one_edge_weight, pool_size_for_PLL_code);
 		}
 
 		/*dblp*/
 		if (1) {
 			string data_name = "dblp";
 			int V = 448891;
-			generate_binary_PLL_indexes_element(data_name, V, one_edge_weight);
-			V = 848891;
-			generate_binary_PLL_indexes_element(data_name, V, one_edge_weight);
+			generate_binary_PLL_indexes_element(data_name, V, one_edge_weight, pool_size_for_PLL_code);
 			V = 1248891;
-			generate_binary_PLL_indexes_element(data_name, V, one_edge_weight);
+			generate_binary_PLL_indexes_element(data_name, V, one_edge_weight, pool_size_for_PLL_code);
 		}
 	}
 
 
 	/*one_edge_weight*/
-	if (1) {
+	if (0) {
 		bool one_edge_weight = true;
 
 		/*amazon*/
 		if (1) {
 			string data_name = "amazon";
 			int V = 188552;
-			results.emplace_back(pool.enqueue([data_name, V, one_edge_weight] {
-				generate_binary_PLL_indexes_element(data_name, V, one_edge_weight);
-				return 1; }));
-			V = 368552;
-			results.emplace_back(pool.enqueue([data_name, V, one_edge_weight] {
-				generate_binary_PLL_indexes_element(data_name, V, one_edge_weight);
-				return 1; }));
+			generate_binary_PLL_indexes_element(data_name, V, one_edge_weight, pool_size_for_PLL_code);
 			V = 548552;
-			results.emplace_back(pool.enqueue([data_name, V, one_edge_weight] {
-				generate_binary_PLL_indexes_element(data_name, V, one_edge_weight);
-				return 1; }));
+			generate_binary_PLL_indexes_element(data_name, V, one_edge_weight, pool_size_for_PLL_code);
 		}
 
 		/*movie*/
 		if (1) {
 			string data_name = "movie";
-			int V = 22423;
-			results.emplace_back(pool.enqueue([data_name, V, one_edge_weight] {
-				generate_binary_PLL_indexes_element(data_name, V, one_edge_weight);
-				return 1; }));
-			V = 42423;
-			results.emplace_back(pool.enqueue([data_name, V, one_edge_weight] {
-				generate_binary_PLL_indexes_element(data_name, V, one_edge_weight);
-				return 1; }));
-			V = 62423;
-			results.emplace_back(pool.enqueue([data_name, V, one_edge_weight] {
-				generate_binary_PLL_indexes_element(data_name, V, one_edge_weight);
-				return 1; }));
+			int V = 62423;
+			generate_binary_PLL_indexes_element(data_name, V, one_edge_weight, pool_size_for_PLL_code);
 		}
 
 		/*dblp*/
 		if (1) {
 			string data_name = "dblp";
 			int V = 897782;
-			generate_binary_PLL_indexes_element(data_name, V, one_edge_weight);
-			V = 1697782;
-			generate_binary_PLL_indexes_element(data_name, V, one_edge_weight);
+			generate_binary_PLL_indexes_element(data_name, V, one_edge_weight, pool_size_for_PLL_code);
 			V = 2497782;
-			generate_binary_PLL_indexes_element(data_name, V, one_edge_weight);
+			generate_binary_PLL_indexes_element(data_name, V, one_edge_weight, pool_size_for_PLL_code);
 		}
 	}
 
@@ -2000,7 +1999,6 @@ void load_global_PLL_indexes(string load_name, bool one_edge_weight) {
 			if (global_amazon_one_edge_weight_PLL_indexes_loaded == 0) {
 				global_amazon_one_edge_weight_PLL_indexes_loaded = 1;
 				global_amazon_one_edge_weight_188552_PLL_indexes = PLL_read_indexes_vectorFORMAT_binary(binary_file_root_path + "//PLL_binary_amazon_one_edge_weight_188552.txt");
-				global_amazon_one_edge_weight_368552_PLL_indexes = PLL_read_indexes_vectorFORMAT_binary(binary_file_root_path + "//PLL_binary_amazon_one_edge_weight_368552.txt");
 				global_amazon_one_edge_weight_548552_PLL_indexes = PLL_read_indexes_vectorFORMAT_binary(binary_file_root_path + "//PLL_binary_amazon_one_edge_weight_548552.txt");
 				global_amazon_one_edge_weight_PLL_indexes_loaded = 2;
 			}
@@ -2022,18 +2020,6 @@ void load_global_PLL_indexes(string load_name, bool one_edge_weight) {
 				}
 			}
 		}
-		else if (load_name == "dblp_1697782") {
-			if (global_dblp_one_edge_weight_1697782_PLL_indexes_loaded == 0) {
-				global_dblp_one_edge_weight_1697782_PLL_indexes_loaded = 1;
-				global_dblp_one_edge_weight_1697782_PLL_indexes = PLL_read_indexes_vectorFORMAT_binary(binary_file_root_path + "//PLL_binary_dblp_one_edge_weight_1697782.txt");
-				global_dblp_one_edge_weight_1697782_PLL_indexes_loaded = 2;
-			}
-			else {
-				while (global_dblp_one_edge_weight_1697782_PLL_indexes_loaded != 2) { // is not loaded yet
-					; // wait until loaded
-				}
-			}
-		}
 		else if (load_name == "dblp_2497782") {
 			if (global_dblp_one_edge_weight_2497782_PLL_indexes_loaded == 0) {
 				global_dblp_one_edge_weight_2497782_PLL_indexes_loaded = 1;
@@ -2049,8 +2035,6 @@ void load_global_PLL_indexes(string load_name, bool one_edge_weight) {
 		else if (load_name == "movie") {
 			if (global_movie_one_edge_weight_PLL_indexes_loaded == 0) {
 				global_movie_one_edge_weight_PLL_indexes_loaded = 1;
-				global_movie_one_edge_weight_22423_PLL_indexes = PLL_read_indexes_vectorFORMAT_binary(binary_file_root_path + "//PLL_binary_movie_one_edge_weight_22423.txt");
-				global_movie_one_edge_weight_42423_PLL_indexes = PLL_read_indexes_vectorFORMAT_binary(binary_file_root_path + "//PLL_binary_movie_one_edge_weight_42423.txt");
 				global_movie_one_edge_weight_62423_PLL_indexes = PLL_read_indexes_vectorFORMAT_binary(binary_file_root_path + "//PLL_binary_movie_one_edge_weight_62423.txt");
 				global_movie_one_edge_weight_PLL_indexes_loaded = 2;
 			}
@@ -2066,7 +2050,6 @@ void load_global_PLL_indexes(string load_name, bool one_edge_weight) {
 			if (global_amazon_PLL_indexes_loaded == 0) {
 				global_amazon_PLL_indexes_loaded = 1;
 				global_amazon_188552_PLL_indexes = PLL_read_indexes_vectorFORMAT_binary(binary_file_root_path + "//PLL_binary_amazon_188552.txt");
-				global_amazon_368552_PLL_indexes = PLL_read_indexes_vectorFORMAT_binary(binary_file_root_path + "//PLL_binary_amazon_368552.txt");
 				global_amazon_548552_PLL_indexes = PLL_read_indexes_vectorFORMAT_binary(binary_file_root_path + "//PLL_binary_amazon_548552.txt");
 				global_amazon_PLL_indexes_loaded = 2;
 			}
@@ -2088,18 +2071,6 @@ void load_global_PLL_indexes(string load_name, bool one_edge_weight) {
 				}
 			}
 		}
-		else if (load_name == "dblp_848891") {
-			if (global_dblp_848891_PLL_indexes_loaded == 0) {
-				global_dblp_848891_PLL_indexes_loaded = 1;
-				global_dblp_848891_PLL_indexes = PLL_read_indexes_vectorFORMAT_binary(binary_file_root_path + "//PLL_binary_dblp_848891.txt");
-				global_dblp_848891_PLL_indexes_loaded = 2;
-			}
-			else {
-				while (global_dblp_848891_PLL_indexes_loaded != 2) { // is not loaded yet
-					; // wait until loaded
-				}
-			}
-		}
 		else if (load_name == "dblp_1248891") {
 			if (global_dblp_1248891_PLL_indexes_loaded == 0) {
 				global_dblp_1248891_PLL_indexes_loaded = 1;
@@ -2112,11 +2083,21 @@ void load_global_PLL_indexes(string load_name, bool one_edge_weight) {
 				}
 			}
 		}
+		else if (load_name == "dblp_2497782") {
+			if (global_dblp_2497782_PLL_indexes_loaded == 0) {
+				global_dblp_2497782_PLL_indexes_loaded = 1;
+				global_dblp_2497782_PLL_indexes = PLL_read_indexes_vectorFORMAT_binary(binary_file_root_path + "//PLL_binary_dblp_2497782.txt");
+				global_dblp_2497782_PLL_indexes_loaded = 2;
+			}
+			else {
+				while (global_dblp_2497782_PLL_indexes_loaded != 2) { // is not loaded yet
+					; // wait until loaded
+				}
+			}
+		}
 		else if (load_name == "movie") {
 			if (global_movie_PLL_indexes_loaded == 0) {
 				global_movie_PLL_indexes_loaded = 1;
-				global_movie_22423_PLL_indexes = PLL_read_indexes_vectorFORMAT_binary(binary_file_root_path + "//PLL_binary_movie_22423.txt");
-				global_movie_42423_PLL_indexes = PLL_read_indexes_vectorFORMAT_binary(binary_file_root_path + "//PLL_binary_movie_42423.txt");
 				global_movie_62423_PLL_indexes = PLL_read_indexes_vectorFORMAT_binary(binary_file_root_path + "//PLL_binary_movie_62423.txt");
 				global_movie_PLL_indexes_loaded = 2;
 			}
@@ -2364,6 +2345,10 @@ void load_graphs(graph_hash_of_mixed_weighted& old_read_graph, graph_hash_of_mix
 			else if (V == 448891) {
 				old_read_graph = graph_hash_of_mixed_weighted_binary_read(binary_file_root_path + "//dblp_read_graph_448891.bin");
 				old_read_group_graph = graph_hash_of_mixed_weighted_binary_read(binary_file_root_path + "//dblp_read_group_graph_448891.bin");
+			}
+			else if (V == 2497782) {
+				old_read_graph = graph_hash_of_mixed_weighted_binary_read(binary_file_root_path + "//dblp_read_graph_2497782.bin");
+				old_read_group_graph = graph_hash_of_mixed_weighted_binary_read(binary_file_root_path + "//dblp_read_group_graph_2497782.bin");
 			}
 			else {
 				generate_new_small_graphs_and_PLL = true;
@@ -2648,7 +2633,7 @@ int experiment_element(string data_name, string save_name, int V, int T, double 
 				continue;
 			}
 
-			newly_generated_PLL_indexes = PLL_generate_indexes_vectorFORMAT(small_read_graph, old_read_graph.hash_of_vectors.size() + 1);
+			newly_generated_PLL_indexes = PLL_generate_indexes_weighted_single_thread(small_read_graph, old_read_graph.hash_of_vectors.size() + 1);
 		}
 		else {
 			cpn = graph_hash_of_mixed_weighted_connected_components_vector_format(old_read_graph, max_N_for_exp);
@@ -2762,6 +2747,9 @@ int experiment_element(string data_name, string save_name, int V, int T, double 
 						}
 						else if (V == 448891) {
 							PLL_indexes_pointer = &global_dblp_448891_PLL_indexes;
+						}
+						else if (V == 2497782) {
+							PLL_indexes_pointer = &global_dblp_2497782_PLL_indexes;
 						}
 					}
 					else if (data_name == "movie") {
@@ -2993,9 +2981,396 @@ void experiments() {
 
 	/* only DUAL and GRETREE do not need PLL indexes */
 
-	int pool_size = 30; // 20 is too many for full dblp 1ec£¬ while 15 uses 350GB RAM at most
-	ThreadPool pool(pool_size); // use pool_size threads
-	std::vector< std::future<int> > results;
+	int amazon_pool_size = 40; // 40 for 110GB
+	int movie_pool_size = 30; // 30 for 250GB
+	int dblp_pool_size_1ec = 15; // 1ec: 20 for 700GB+, while 15 uses 300GB RAM;        
+	int dblp_pool_size_J = 10; // Jacard: 10 for 450GB, 15 for 500GB
+	/*one_edge_weight*/
+	if (0) {
+		bool one_edge_weight = true;
+
+		/*amazon*/
+		if (1) {
+
+			ThreadPool pool(amazon_pool_size); // use pool_size threads
+			std::vector< std::future<int> > results;
+
+			string data_name = "amazon";
+			load_global_PLL_indexes(data_name, one_edge_weight);
+			int iteration_times = 100;
+			int V = 548552, T = 5;
+			double b = 0.9, tau = 1, P_min = 0.5, P_max = 0.9;
+
+			int split_num = 20;
+			for (int ii = 1; ii <= split_num; ii++) {
+
+				/*vary V*/
+				if (1) {
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_V_1_" + to_string(ii) + ".csv", 45, T, b, tau, P_min, P_max, iteration_times / split_num,
+							true, true, true, true, true, true, true, one_edge_weight); // 50 is sometimes too slow
+						return 1; }));
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_V_2_" + to_string(ii) + ".csv", 188552, T, b, tau, P_min, P_max, iteration_times / split_num,
+							true, true, true, 0, true, true, true, one_edge_weight);
+						return 1; }));
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_base_" + to_string(ii) + ".csv", V, T, b, tau, P_min, P_max, iteration_times / split_num,
+							true, true, true, 0, true, true, true, one_edge_weight);
+						return 1; }));
+				}
+
+				/*vary T*/
+				if (1) {
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_T_1_" + to_string(ii) + ".csv", V, 3, b, tau, P_min, P_max, iteration_times / split_num,
+							true, true, true, 0, true, true, true, one_edge_weight);
+						return 1; }));
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_T_2_" + to_string(ii) + ".csv", V, 4, b, tau, P_min, P_max, iteration_times / split_num,
+							true, true, true, 0, true, true, true, one_edge_weight);
+						return 1; }));
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_T_3_" + to_string(ii) + ".csv", V, 6, b, tau, P_min, P_max, iteration_times / split_num,
+							true, true, true, 0, true, true, true, one_edge_weight);
+						return 1; }));
+				}
+
+				/*vary b*/
+				if (1) {
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_b_1_" + to_string(ii) + ".csv", V, T, 0.8, tau, P_min, P_max, iteration_times / split_num,
+							true, true, true, 0, true, true, true, one_edge_weight);
+						return 1; }));
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_b_2_" + to_string(ii) + ".csv", V, T, 0.85, tau, P_min, P_max, iteration_times / split_num,
+							true, true, true, 0, true, true, true, one_edge_weight);
+						return 1; }));
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_b_3_" + to_string(ii) + ".csv", V, T, 0.95, tau, P_min, P_max, iteration_times / split_num,
+							true, true, true, 0, true, true, true, one_edge_weight);
+						return 1; }));
+				}
+
+				/*vary tau*/
+				if (1) {
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_tau_1_" + to_string(ii) + ".csv", V, T, b, 3, P_min, P_max, iteration_times / split_num,
+							0, true, 0, 0, true, 0, 0, one_edge_weight);
+						return 1; }));
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_tau_2_" + to_string(ii) + ".csv", V, T, b, 5, P_min, P_max, iteration_times / split_num,
+							0, true, 0, 0, true, 0, 0, one_edge_weight);
+						return 1; }));
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_tau_3_" + to_string(ii) + ".csv", V, T, b, 7, P_min, P_max, iteration_times / split_num,
+							0, true, 0, 0, true, 0, 0, one_edge_weight);
+						return 1; }));
+				}
+
+				/*vary P_min*/
+				if (1) {
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_P_min_1_" + to_string(ii) + ".csv", V, T, b, tau, 0.4, P_max, iteration_times / split_num,
+							true, true, true, 0, true, true, true, one_edge_weight);
+						return 1; }));
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_P_min_2_" + to_string(ii) + ".csv", V, T, b, tau, 0.6, P_max, iteration_times / split_num,
+							true, true, true, 0, true, true, true, one_edge_weight);
+						return 1; }));
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_P_min_3_" + to_string(ii) + ".csv", V, T, b, tau, 0.7, P_max, iteration_times / split_num,
+							true, true, true, 0, true, true, true, one_edge_weight);
+						return 1; }));
+				}
+
+				/*vary P_max*/
+				if (1) {
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_P_max_1_" + to_string(ii) + ".csv", V, T, b, tau, P_min, 0.7, iteration_times / split_num,
+							true, true, true, 0, true, true, true, one_edge_weight);
+						return 1; }));
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_P_max_2_" + to_string(ii) + ".csv", V, T, b, tau, P_min, 0.8, iteration_times / split_num,
+							true, true, true, 0, true, true, true, one_edge_weight);
+						return 1; }));
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_P_max_3_" + to_string(ii) + ".csv", V, T, b, tau, P_min, 1, iteration_times / split_num,
+							true, true, true, 0, true, true, true, one_edge_weight);
+						return 1; }));
+				}
+
+
+
+			}
+
+			for (auto&& result : results) {
+				result.get(); // wait for the below clear
+			}
+			clear_global_PLL_indexes("amazon", one_edge_weight);
+		}
+
+		/*movie*/
+		if (1) {
+
+			ThreadPool pool(movie_pool_size); // use pool_size threads
+			std::vector< std::future<int> > results;
+
+			string data_name = "movie";
+			load_global_PLL_indexes(data_name, one_edge_weight);
+			int iteration_times = 100;
+			int V = 62423, T = 5;
+			double b = 0.9, tau = 1, P_min = 0.5, P_max = 0.9;
+
+			int split_num = 20;
+			for (int ii = 1; ii <= split_num; ii++) {
+
+				/*vary V*/
+				if (1) {
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_V_1_" + to_string(ii) + ".csv", 70, T, b, tau, P_min, P_max, iteration_times / split_num,
+							true, true, true, true, true, true, true, one_edge_weight);
+						return 1; }));
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_V_special_" + to_string(ii) + ".csv", 2423, T, b, tau, P_min, P_max, iteration_times / split_num / 2,
+							true, true, true, 0, true, true, true, one_edge_weight);
+						return 1; }));
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_base_" + to_string(ii) + ".csv", V, T, b, tau, P_min, P_max, iteration_times / split_num,
+							true, true, true, 0, 0, true, true, one_edge_weight);
+						return 1; }));
+				}
+
+				/*vary T*/
+				if (1) {
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_T_1_" + to_string(ii) + ".csv", V, 3, b, tau, P_min, P_max, iteration_times / split_num,
+							true, true, true, 0, 0, true, true, one_edge_weight);
+						return 1; }));
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_T_2_" + to_string(ii) + ".csv", V, 4, b, tau, P_min, P_max, iteration_times / split_num,
+							true, true, true, 0, 0, true, true, one_edge_weight);
+						return 1; }));
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_T_3_" + to_string(ii) + ".csv", V, 6, b, tau, P_min, P_max, iteration_times / split_num,
+							true, true, true, 0, 0, true, true, one_edge_weight);
+						return 1; }));
+				}
+
+				/*vary b*/
+				if (1) {
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_b_1_" + to_string(ii) + ".csv", V, T, 0.8, tau, P_min, P_max, iteration_times / split_num,
+							true, true, true, 0, 0, true, true, one_edge_weight);
+						return 1; }));
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_b_2_" + to_string(ii) + ".csv", V, T, 0.85, tau, P_min, P_max, iteration_times / split_num,
+							true, true, true, 0, 0, true, true, one_edge_weight);
+						return 1; }));
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_b_3_" + to_string(ii) + ".csv", V, T, 0.95, tau, P_min, P_max, iteration_times / split_num,
+							true, true, true, 0, 0, true, true, one_edge_weight);
+						return 1; }));
+				}
+
+				/*vary tau*/
+				if (1) {
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_tau_1_" + to_string(ii) + ".csv", V, T, b, 3, P_min, P_max, iteration_times / split_num,
+							0, true, 0, 0, 0, 0, 0, one_edge_weight);
+						return 1; }));
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_tau_2_" + to_string(ii) + ".csv", V, T, b, 5, P_min, P_max, iteration_times / split_num,
+							0, true, 0, 0, 0, 0, 0, one_edge_weight);
+						return 1; }));
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_tau_3_" + to_string(ii) + ".csv", V, T, b, 7, P_min, P_max, iteration_times / split_num,
+							0, true, 0, 0, 0, 0, 0, one_edge_weight);
+						return 1; }));
+				}
+
+				/*vary P_min*/
+				if (1) {
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_P_min_1_" + to_string(ii) + ".csv", V, T, b, tau, 0.4, P_max, iteration_times / split_num,
+							true, true, true, 0, 0, true, true, one_edge_weight);
+						return 1; }));
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_P_min_2_" + to_string(ii) + ".csv", V, T, b, tau, 0.6, P_max, iteration_times / split_num,
+							true, true, true, 0, 0, true, true, one_edge_weight);
+						return 1; }));
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_P_min_3_" + to_string(ii) + ".csv", V, T, b, tau, 0.7, P_max, iteration_times / split_num,
+							true, true, true, 0, 0, true, true, one_edge_weight);
+						return 1; }));
+				}
+
+				/*vary P_max*/
+				if (1) {
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_P_max_1_" + to_string(ii) + ".csv", V, T, b, tau, P_min, 0.7, iteration_times / split_num,
+							true, true, true, 0, 0, true, true, one_edge_weight);
+						return 1; }));
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_P_max_2_" + to_string(ii) + ".csv", V, T, b, tau, P_min, 0.8, iteration_times / split_num,
+							true, true, true, 0, 0, true, true, one_edge_weight);
+						return 1; }));
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_P_max_3_" + to_string(ii) + ".csv", V, T, b, tau, P_min, 1, iteration_times / split_num,
+							true, true, true, 0, 0, true, true, one_edge_weight);
+						return 1; }));
+				}
+
+			}
+
+			for (auto&& result : results) {
+				result.get(); // wait for the below clear
+			}
+			clear_global_PLL_indexes("movie", one_edge_weight);
+		}
+
+
+		/*dblp*/
+		if (1) {
+
+			ThreadPool pool(dblp_pool_size_1ec); // use pool_size threads
+			std::vector< std::future<int> > results;
+
+			string data_name = "dblp";
+			int iteration_times = 100;
+			int V = 2497782, T = 5;
+			double b = 0.9, tau = 1, P_min = 0.5, P_max = 0.9;
+
+			/*V2*/
+			if (1) {
+
+				int split_num = 20;
+				if (1) {
+					load_global_PLL_indexes("dblp_897782", one_edge_weight);
+					for (int ii = 1; ii <= split_num; ii++) {
+						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+							return experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_V_2_" + to_string(ii) + ".csv", 897782, T, b, tau, P_min, P_max,
+								iteration_times / split_num, true, true, true, 0, true, true, true, one_edge_weight);
+						}));
+					}
+					for (auto&& result : results) {
+						result.get(); // to finish the above threads; since the amazon and movie threads return 1, but not return experiment_element value, amazon and movie threads do not need to be finished here
+					}
+					results.clear(); // future get value can only be called once for each thread result, must clear results here, otherwise you should not call the above future value again!
+					clear_global_PLL_indexes("dblp_897782", one_edge_weight); // to save memory
+				}
+			}
+
+
+			/*others*/
+			if (1) {
+
+				load_global_PLL_indexes("dblp_2497782", one_edge_weight);
+				int split_num = 20;
+				for (int ii = 1; ii <= split_num; ii++) {
+
+					/*vary V*/
+					if (1) {
+						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+							experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_V_1_" + to_string(ii) + ".csv", 90, T, b, tau, P_min, P_max, iteration_times / split_num,
+								true, true, true, true, true, true, true, one_edge_weight);
+							return 1; }));
+						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+							experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_base_" + to_string(ii) + ".csv", V, T, b, tau, P_min, P_max, iteration_times / split_num,
+								true, true, true, 0, 0, true, true, one_edge_weight);
+							return 1; }));
+					}
+
+					/*vary T*/
+					if (1) {
+						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+							experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_T_1_" + to_string(ii) + ".csv", V, 3, b, tau, P_min, P_max, iteration_times / split_num,
+								true, true, true, 0, 0, true, true, one_edge_weight);
+							return 1; }));
+						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+							experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_T_2_" + to_string(ii) + ".csv", V, 4, b, tau, P_min, P_max, iteration_times / split_num,
+								true, true, true, 0, 0, true, true, one_edge_weight);
+							return 1; }));
+						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+							experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_T_3_" + to_string(ii) + ".csv", V, 6, b, tau, P_min, P_max, iteration_times / split_num,
+								true, true, true, 0, 0, true, true, one_edge_weight);
+							return 1; }));
+					}
+
+					/*vary b*/
+					if (1) {
+						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+							experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_b_1_" + to_string(ii) + ".csv", V, T, 0.8, tau, P_min, P_max, iteration_times / split_num,
+								true, true, true, 0, 0, true, true, one_edge_weight);
+							return 1; }));
+						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+							experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_b_2_" + to_string(ii) + ".csv", V, T, 0.85, tau, P_min, P_max, iteration_times / split_num,
+								true, true, true, 0, 0, true, true, one_edge_weight);
+							return 1; }));
+						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+							experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_b_3_" + to_string(ii) + ".csv", V, T, 0.95, tau, P_min, P_max, iteration_times / split_num,
+								true, true, true, 0, 0, true, true, one_edge_weight);
+							return 1; }));
+					}
+
+					/*vary tau*/
+					if (1) {
+						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+							experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_tau_1_" + to_string(ii) + ".csv", V, T, b, 3, P_min, P_max, iteration_times / split_num,
+								0, true, 0, 0, 0, 0, 0, one_edge_weight);
+							return 1; }));
+						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+							experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_tau_2_" + to_string(ii) + ".csv", V, T, b, 5, P_min, P_max, iteration_times / split_num,
+								0, true, 0, 0, 0, 0, 0, one_edge_weight);
+							return 1; }));
+						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+							experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_tau_3_" + to_string(ii) + ".csv", V, T, b, 7, P_min, P_max, iteration_times / split_num,
+								0, true, 0, 0, 0, 0, 0, one_edge_weight);
+							return 1; }));
+					}
+
+					/*vary P_min*/
+					if (1) {
+						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+							experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_P_min_1_" + to_string(ii) + ".csv", V, T, b, tau, 0.4, P_max, iteration_times / split_num,
+								true, true, true, 0, 0, true, true, one_edge_weight);
+							return 1; }));
+						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+							experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_P_min_2_" + to_string(ii) + ".csv", V, T, b, tau, 0.6, P_max, iteration_times / split_num,
+								true, true, true, 0, 0, true, true, one_edge_weight);
+							return 1; }));
+						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+							experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_P_min_3_" + to_string(ii) + ".csv", V, T, b, tau, 0.7, P_max, iteration_times / split_num,
+								true, true, true, 0, 0, true, true, one_edge_weight);
+							return 1; }));
+					}
+
+					/*vary P_max*/
+					if (1) {
+						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+							experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_P_max_1_" + to_string(ii) + ".csv", V, T, b, tau, P_min, 0.7, iteration_times / split_num,
+								true, true, true, 0, 0, true, true, one_edge_weight);
+							return 1; }));
+						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+							experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_P_max_2_" + to_string(ii) + ".csv", V, T, b, tau, P_min, 0.8, iteration_times / split_num,
+								true, true, true, 0, 0, true, true, one_edge_weight);
+							return 1; }));
+						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+							experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_P_max_3_" + to_string(ii) + ".csv", V, T, b, tau, P_min, 1, iteration_times / split_num,
+								true, true, true, 0, 0, true, true, one_edge_weight);
+							return 1; }));
+					}
+
+				}
+				for (auto&& result : results) {
+					result.get(); // wait for the below clear
+				}
+				results.clear();
+				clear_global_PLL_indexes("dblp_2497782", one_edge_weight);
+			}
+
+		}
+	}
 
 	/*Jacard*/
 	if (1) {
@@ -3004,27 +3379,26 @@ void experiments() {
 		/*amazon*/
 		if (0) {
 
+			ThreadPool pool(amazon_pool_size); // use pool_size threads
+			std::vector< std::future<int> > results;
+
 			string data_name = "amazon";
 			load_global_PLL_indexes(data_name, one_edge_weight);
 			int iteration_times = 100;
 			int V = 548552, T = 5;
 			double b = 0.9, tau = 1, P_min = 0.5, P_max = 0.9;
 
-			int split_num = 10;
+			int split_num = 20;
 			for (int ii = 1; ii <= split_num; ii++) {
 
 				/*vary V*/
 				if (1) {
-					//results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-					//	experiment_element(data_name, "Exp_" + data_name + "_vary_V_1_" + to_string(ii) + ".csv", 45, T, b, tau, P_min, P_max, iteration_times / split_num,
-					//		true, true, true, true, true, true, true, one_edge_weight);
-					//	return 1; })); // DUAL is often very slow when V=70, sometimes even when V=50
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+						experiment_element(data_name, "Exp_" + data_name + "_vary_V_1_" + to_string(ii) + ".csv", 45, T, b, tau, P_min, P_max, iteration_times / split_num,
+							true, true, true, true, true, true, true, one_edge_weight);
+						return 1; })); // DUAL is often very slow when V=70, sometimes even when V=50
 					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
 						experiment_element(data_name, "Exp_" + data_name + "_vary_V_2_" + to_string(ii) + ".csv", 188552, T, b, tau, P_min, P_max, iteration_times / split_num,
-							true, true, true, 0, true, true, true, one_edge_weight);
-						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_vary_V_3_" + to_string(ii) + ".csv", 368552, T, b, tau, P_min, P_max, iteration_times / split_num,
 							true, true, true, 0, true, true, true, one_edge_weight);
 						return 1; }));
 					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
@@ -3117,11 +3491,17 @@ void experiments() {
 				
 			}
 
-			
+			for (auto&& result : results) {
+				result.get(); // wait for the below clear
+			}
+			clear_global_PLL_indexes("amazon", one_edge_weight);
 		}
 
-		/*movie 22 threads; 150 GB RAM*/
-		if (1) {
+		/*movie*/
+		if (0) {
+
+			ThreadPool pool(movie_pool_size); // use pool_size threads
+			std::vector< std::future<int> > results;
 
 			string data_name = "movie";
 			load_global_PLL_indexes(data_name, one_edge_weight);
@@ -3130,26 +3510,18 @@ void experiments() {
 			double b = 0.9, tau = 1, P_min = 0.5, P_max = 0.9;
 
 
-			int split_num = 10;
+			int split_num = 20;
 			for (int ii = 1; ii <= split_num; ii++) {
 				
 				/*vary V*/
 				if (1) {
-					//results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-					//	experiment_element(data_name, "Exp_" + data_name + "_vary_V_1_" + to_string(ii) + ".csv", 70, T, b, tau, P_min, P_max, iteration_times / split_num, 
-					//		true, true, true, true, true, true, true, one_edge_weight);
-					//	return 1; }));
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+						experiment_element(data_name, "Exp_" + data_name + "_vary_V_1_" + to_string(ii) + ".csv", 70, T, b, tau, P_min, P_max, iteration_times / split_num, 
+							true, true, true, true, true, true, true, one_edge_weight);
+						return 1; }));
 					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
 						experiment_element(data_name, "Exp_" + data_name + "_vary_V_special_" + to_string(ii) + ".csv", 2423, T, b, tau, P_min, P_max, iteration_times / split_num / 2,
 							true, true, true, 0, true, true, true, one_edge_weight);
-						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_vary_V_2_" + to_string(ii) + ".csv", 22423, T, b, tau, P_min, P_max, iteration_times / split_num,
-							true, true, true, 0, 0, true, true, one_edge_weight);
-						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_vary_V_3_" + to_string(ii) + ".csv", 42423, T, b, tau, P_min, P_max, iteration_times / split_num,
-							true, true, true, 0, 0, true, true, one_edge_weight);
 						return 1; }));
 					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
 						experiment_element(data_name, "Exp_" + data_name + "_vary_base_" + to_string(ii) + ".csv", V, T, b, tau, P_min, P_max, iteration_times / split_num,
@@ -3241,28 +3613,27 @@ void experiments() {
 
 			}
 
-			
+			for (auto&& result : results) {
+				result.get(); // wait for the below clear
+			}
+			clear_global_PLL_indexes("movie", one_edge_weight);
 		}
-
-		for (auto&& result : results) {
-			result.get(); // wait for the below clear
-		}
-		results.clear();
-		clear_global_PLL_indexes("amazon", one_edge_weight);
-		clear_global_PLL_indexes("movie", one_edge_weight);
 
 		/*dblp*/
-		if (0) {
+		if (1) {
+
+			ThreadPool pool(dblp_pool_size_J); // use pool_size threads
+			std::vector< std::future<int> > results;
 
 			string data_name = "dblp";
 
 			int iteration_times = 100;
 
-			int V = 1248891, T = 5;
+			int V = 2497782, T = 5;
 			double b = 0.9, tau = 1, P_min = 0.5, P_max = 0.9;
 
-			/*V2; V3*/
-			if (1) {
+			/*V2*/
+			if (0) {
 
 				int split_num = 20;
 
@@ -3278,35 +3649,21 @@ void experiments() {
 				}
 				results.clear(); // future get value can only be called once for each thread result, must clear results here, otherwise you should not call the above future value again!
 				clear_global_PLL_indexes("dblp_448891", one_edge_weight); // to save memory
-
-
-				load_global_PLL_indexes("dblp_848891", one_edge_weight);
-				for (int ii = 1; ii <= split_num; ii++) {
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						return experiment_element(data_name, "Exp_" + data_name + "_vary_V_3_" + to_string(ii) + ".csv", 848891, T, b, tau, P_min, P_max, 
-							iteration_times / split_num, true, true, true, 0, 0, true, true, one_edge_weight);
-					}));
-				}
-				for (auto&& result : results) {
-					result.get(); // since V2 future values have been cleared above, it's safe to get all futures values in reults here
-				}
-				results.clear();
-				clear_global_PLL_indexes("dblp_848891", one_edge_weight);
-
 			}
+
 
 			/*others*/
 			if (1) {
-				load_global_PLL_indexes("dblp_1248891", one_edge_weight);
-				int split_num = 10;
+				load_global_PLL_indexes("dblp_2497782", one_edge_weight);
+				int split_num = 20;
 				for (int ii = 1; ii <= split_num; ii++) {
 
-					/*vary V; 200 GB*/
+					/*vary V*/
 					if (1) {
-						//results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						//	return experiment_element(data_name, "Exp_" + data_name + "_vary_V_1_" + to_string(ii) + ".csv", 90, T, b, tau, P_min, P_max, iteration_times / split_num,
-						//		true, true, true, true, true, true, true, one_edge_weight);
-						//}));
+						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+							return experiment_element(data_name, "Exp_" + data_name + "_vary_V_1_" + to_string(ii) + ".csv", 90, T, b, tau, P_min, P_max, iteration_times / split_num,
+								true, true, true, true, true, true, true, one_edge_weight);
+						}));
 						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
 							return experiment_element(data_name, "Exp_" + data_name + "_vary_base_" + to_string(ii) + ".csv", V, T, b, tau, P_min, P_max, iteration_times / split_num,
 								true, true, true, 0, 0, true, true, one_edge_weight);
@@ -3406,413 +3763,7 @@ void experiments() {
 	}
 
 
-	/*one_edge_weight*/
-	if (1) {
-		bool one_edge_weight = true;
-
-		/*amazon*/
-		if (0) {
-
-			string data_name = "amazon";
-			load_global_PLL_indexes(data_name, one_edge_weight);
-			int iteration_times = 100;
-			int V = 548552, T = 5;
-			double b = 0.9, tau = 1, P_min = 0.5, P_max = 0.9;
-
-			int split_num = 10;
-			for (int ii = 1; ii <= split_num; ii++) {
-
-				/*vary V*/
-				if (1) {
-					//results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-					//	experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_V_1_" + to_string(ii) + ".csv", 45, T, b, tau, P_min, P_max, iteration_times / split_num, 
-					//		true, true, true, true, true, true, true, one_edge_weight); // 50 is sometimes too slow
-					//	return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_V_2_" + to_string(ii) + ".csv", 188552, T, b, tau, P_min, P_max, iteration_times / split_num,
-							true, true, true, 0, true, true, true, one_edge_weight);
-						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_V_3_" + to_string(ii) + ".csv", 368552, T, b, tau, P_min, P_max, iteration_times / split_num,
-							true, true, true, 0, true, true, true, one_edge_weight);
-						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_base_" + to_string(ii) + ".csv", V, T, b, tau, P_min, P_max, iteration_times / split_num,
-							true, true, true, 0, true, true, true, one_edge_weight);
-						return 1; }));
-				}
-
-				/*vary T*/
-				if (1) {
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_T_1_" + to_string(ii) + ".csv", V, 3, b, tau, P_min, P_max, iteration_times / split_num,
-							true, true, true, 0, true, true, true, one_edge_weight);
-						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_T_2_" + to_string(ii) + ".csv", V, 4, b, tau, P_min, P_max, iteration_times / split_num,
-							true, true, true, 0, true, true, true, one_edge_weight);
-						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_T_3_" + to_string(ii) + ".csv", V, 6, b, tau, P_min, P_max, iteration_times / split_num,
-							true, true, true, 0, true, true, true, one_edge_weight);
-						return 1; }));
-				}
-
-				/*vary b*/
-				if (1) {
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_b_1_" + to_string(ii) + ".csv", V, T, 0.8, tau, P_min, P_max, iteration_times / split_num,
-							true, true, true, 0, true, true, true, one_edge_weight);
-						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_b_2_" + to_string(ii) + ".csv", V, T, 0.85, tau, P_min, P_max, iteration_times / split_num,
-							true, true, true, 0, true, true, true, one_edge_weight);
-						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_b_3_" + to_string(ii) + ".csv", V, T, 0.95, tau, P_min, P_max, iteration_times / split_num,
-							true, true, true, 0, true, true, true, one_edge_weight);
-						return 1; }));
-				}
-
-				/*vary tau*/
-				if (1) {
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_tau_1_" + to_string(ii) + ".csv", V, T, b, 3, P_min, P_max, iteration_times / split_num,
-							0, true, 0, 0, true, 0, 0, one_edge_weight);
-						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_tau_2_" + to_string(ii) + ".csv", V, T, b, 5, P_min, P_max, iteration_times / split_num,
-							0, true, 0, 0, true, 0, 0, one_edge_weight);
-						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_tau_3_" + to_string(ii) + ".csv", V, T, b, 7, P_min, P_max, iteration_times / split_num,
-							0, true, 0, 0, true, 0, 0, one_edge_weight);
-						return 1; }));
-				}
-
-				/*vary P_min*/
-				if (1) {
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_P_min_1_" + to_string(ii) + ".csv", V, T, b, tau, 0.4, P_max, iteration_times / split_num,
-							true, true, true, 0, true, true, true, one_edge_weight);
-						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_P_min_2_" + to_string(ii) + ".csv", V, T, b, tau, 0.6, P_max, iteration_times / split_num,
-							true, true, true, 0, true, true, true, one_edge_weight);
-						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_P_min_3_" + to_string(ii) + ".csv", V, T, b, tau, 0.7, P_max, iteration_times / split_num,
-							true, true, true, 0, true, true, true, one_edge_weight);
-						return 1; }));
-				}
-
-				/*vary P_max*/
-				if (1) {
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_P_max_1_" + to_string(ii) + ".csv", V, T, b, tau, P_min, 0.7, iteration_times / split_num,
-							true, true, true, 0, true, true, true, one_edge_weight);
-						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_P_max_2_" + to_string(ii) + ".csv", V, T, b, tau, P_min, 0.8, iteration_times / split_num,
-							true, true, true, 0, true, true, true, one_edge_weight);
-						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_P_max_3_" + to_string(ii) + ".csv", V, T, b, tau, P_min, 1, iteration_times / split_num,
-							true, true, true, 0, true, true, true, one_edge_weight);
-						return 1; }));
-				}
-
-
-				
-			}
-		
-		}
-
-		/*movie*/
-		if (0) {
-
-			string data_name = "movie";
-			load_global_PLL_indexes(data_name, one_edge_weight);
-			int iteration_times = 100;
-			int V = 62423, T = 5;
-			double b = 0.9, tau = 1, P_min = 0.5, P_max = 0.9;
-
-			int split_num = 10;
-			for (int ii = 1; ii <= split_num; ii++) {
-
-				/*vary V*/
-				if (1) {
-					//results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-					//	experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_V_1_" + to_string(ii) + ".csv", 70, T, b, tau, P_min, P_max, iteration_times / split_num,
-					//		true, true, true, true, true, true, true, one_edge_weight);
-					//	return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_V_special_" + to_string(ii) + ".csv", 2423, T, b, tau, P_min, P_max, iteration_times / split_num / 2,
-							true, true, true, 0, true, true, true, one_edge_weight);
-						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_V_2_" + to_string(ii) + ".csv", 22423, T, b, tau, P_min, P_max, iteration_times / split_num,
-							true, true, true, 0, 0, true, true, one_edge_weight);
-						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_V_3_" + to_string(ii) + ".csv", 42423, T, b, tau, P_min, P_max, iteration_times / split_num,
-							true, true, true, 0, 0, true, true, one_edge_weight);
-						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_base_" + to_string(ii) + ".csv", V, T, b, tau, P_min, P_max, iteration_times / split_num,
-							true, true, true, 0, 0, true, true, one_edge_weight);
-						return 1; }));
-				}
-
-				/*vary T*/
-				if (1) {
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_T_1_" + to_string(ii) + ".csv", V, 3, b, tau, P_min, P_max, iteration_times / split_num,
-							true, true, true, 0, 0, true, true, one_edge_weight);
-						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_T_2_" + to_string(ii) + ".csv", V, 4, b, tau, P_min, P_max, iteration_times / split_num,
-							true, true, true, 0, 0, true, true, one_edge_weight);
-						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_T_3_" + to_string(ii) + ".csv", V, 6, b, tau, P_min, P_max, iteration_times / split_num,
-							true, true, true, 0, 0, true, true, one_edge_weight);
-						return 1; }));
-				}
-
-				/*vary b*/
-				if (1) {
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_b_1_" + to_string(ii) + ".csv", V, T, 0.8, tau, P_min, P_max, iteration_times / split_num,
-							true, true, true, 0, 0, true, true, one_edge_weight);
-						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_b_2_" + to_string(ii) + ".csv", V, T, 0.85, tau, P_min, P_max, iteration_times / split_num,
-							true, true, true, 0, 0, true, true, one_edge_weight);
-						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_b_3_" + to_string(ii) + ".csv", V, T, 0.95, tau, P_min, P_max, iteration_times / split_num,
-							true, true, true, 0, 0, true, true, one_edge_weight);
-						return 1; }));
-				}
-
-				/*vary tau*/
-				if (1) {
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_tau_1_" + to_string(ii) + ".csv", V, T, b, 3, P_min, P_max, iteration_times / split_num,
-							0, true, 0, 0, 0, 0, 0, one_edge_weight);
-						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_tau_2_" + to_string(ii) + ".csv", V, T, b, 5, P_min, P_max, iteration_times / split_num,
-							0, true, 0, 0, 0, 0, 0, one_edge_weight);
-						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_tau_3_" + to_string(ii) + ".csv", V, T, b, 7, P_min, P_max, iteration_times / split_num,
-							0, true, 0, 0, 0, 0, 0, one_edge_weight);
-						return 1; }));
-				}
-
-				/*vary P_min*/
-				if (1) {
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_P_min_1_" + to_string(ii) + ".csv", V, T, b, tau, 0.4, P_max, iteration_times / split_num,
-							true, true, true, 0, 0, true, true, one_edge_weight);
-						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_P_min_2_" + to_string(ii) + ".csv", V, T, b, tau, 0.6, P_max, iteration_times / split_num,
-							true, true, true, 0, 0, true, true, one_edge_weight);
-						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_P_min_3_" + to_string(ii) + ".csv", V, T, b, tau, 0.7, P_max, iteration_times / split_num,
-							true, true, true, 0, 0, true, true, one_edge_weight);
-						return 1; }));
-				}
-
-				/*vary P_max*/
-				if (1) {
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_P_max_1_" + to_string(ii) + ".csv", V, T, b, tau, P_min, 0.7, iteration_times / split_num,
-							true, true, true, 0, 0, true, true, one_edge_weight);
-						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_P_max_2_" + to_string(ii) + ".csv", V, T, b, tau, P_min, 0.8, iteration_times / split_num,
-							true, true, true, 0, 0, true, true, one_edge_weight);
-						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_P_max_3_" + to_string(ii) + ".csv", V, T, b, tau, P_min, 1, iteration_times / split_num,
-							true, true, true, 0, 0, true, true, one_edge_weight);
-						return 1; }));
-				}
-
-			}
-
-		}
-
-		for (auto&& result : results) {
-			result.get(); // wait for the below clear
-		}
-		results.clear();
-		clear_global_PLL_indexes("amazon", one_edge_weight);
-		clear_global_PLL_indexes("movie", one_edge_weight);
-
-		/*dblp 27 threads*/
-		if (1) {
-
-			int pool_size = 15; // 20 is too many for full dblp 1ec£¬ while 15 uses 350GB RAM at most
-			ThreadPool pool(pool_size); // use pool_size threads
-			std::vector< std::future<int> > results;
-
-			string data_name = "dblp";
-			int iteration_times = 100;
-			int V = 2497782, T = 5;
-			double b = 0.9, tau = 1, P_min = 0.5, P_max = 0.9;
-
-			/*V2; V3*/
-			if (1) {
-
-				int split_num = 20;
-				if (1) {
-					load_global_PLL_indexes("dblp_897782", one_edge_weight);
-					for (int ii = 1; ii <= split_num; ii++) {
-						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-							return experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_V_2_" + to_string(ii) + ".csv", 897782, T, b, tau, P_min, P_max,
-								iteration_times / split_num, true, true, true, 0, true, true, true, one_edge_weight);
-						}));
-					}
-					for (auto&& result : results) {
-						result.get(); // to finish the above threads; since the amazon and movie threads return 1, but not return experiment_element value, amazon and movie threads do not need to be finished here
-					}
-					results.clear(); // future get value can only be called once for each thread result, must clear results here, otherwise you should not call the above future value again!
-					clear_global_PLL_indexes("dblp_897782", one_edge_weight); // to save memory
-				}
-				if (1) {
-					load_global_PLL_indexes("dblp_1697782", one_edge_weight);
-					for (int ii = 1; ii <= split_num; ii++) {
-						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-							return experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_V_3_" + to_string(ii) + ".csv", 1697782, T, b, tau, P_min, P_max,
-								iteration_times / split_num, true, true, true, 0, 0, true, true, one_edge_weight);
-						}));
-					}
-					for (auto&& result : results) {
-						result.get(); // since V2 future values have been cleared above, it's safe to get all futures values in reults here
-					}
-					results.clear();
-					clear_global_PLL_indexes("dblp_1697782", one_edge_weight);
-				}
-			}
-
-
-			/*others*/
-			if (1) {
-
-				load_global_PLL_indexes("dblp_2497782", one_edge_weight);
-				int split_num = 10;
-				for (int ii = 1; ii <= split_num; ii++) {
-
-					/*vary V*/
-					if (1) {
-						//results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						//	experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_V_1_" + to_string(ii) + ".csv", 80, T, b, tau, P_min, P_max, iteration_times / split_num,
-						//		true, true, true, true, true, true, true, one_edge_weight);
-						//	return 1; }));
-						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-							experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_base_" + to_string(ii) + ".csv", V, T, b, tau, P_min, P_max, iteration_times / split_num,
-								true, true, true, 0, 0, true, true, one_edge_weight);
-							return 1; }));
-					}
-
-					/*vary T*/
-					if (1) {
-						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-							experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_T_1_" + to_string(ii) + ".csv", V, 3, b, tau, P_min, P_max, iteration_times / split_num,
-								true, true, true, 0, 0, true, true, one_edge_weight);
-							return 1; }));
-						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-							experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_T_2_" + to_string(ii) + ".csv", V, 4, b, tau, P_min, P_max, iteration_times / split_num,
-								true, true, true, 0, 0, true, true, one_edge_weight);
-							return 1; }));
-						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-							experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_T_3_" + to_string(ii) + ".csv", V, 6, b, tau, P_min, P_max, iteration_times / split_num,
-								true, true, true, 0, 0, true, true, one_edge_weight);
-							return 1; }));
-					}
-
-					/*vary b*/
-					if (1) {
-						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-							experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_b_1_" + to_string(ii) + ".csv", V, T, 0.8, tau, P_min, P_max, iteration_times / split_num,
-								true, true, true, 0, 0, true, true, one_edge_weight);
-							return 1; }));
-						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-							experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_b_2_" + to_string(ii) + ".csv", V, T, 0.85, tau, P_min, P_max, iteration_times / split_num,
-								true, true, true, 0, 0, true, true, one_edge_weight);
-							return 1; }));
-						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-							experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_b_3_" + to_string(ii) + ".csv", V, T, 0.95, tau, P_min, P_max, iteration_times / split_num,
-								true, true, true, 0, 0, true, true, one_edge_weight);
-							return 1; }));
-					}
-
-					/*vary tau*/
-					if (1) {
-						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-							experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_tau_1_" + to_string(ii) + ".csv", V, T, b, 3, P_min, P_max, iteration_times / split_num,
-								0, true, 0, 0, 0, 0, 0, one_edge_weight);
-							return 1; }));
-						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-							experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_tau_2_" + to_string(ii) + ".csv", V, T, b, 5, P_min, P_max, iteration_times / split_num,
-								0, true, 0, 0, 0, 0, 0, one_edge_weight);
-							return 1; }));
-						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-							experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_tau_3_" + to_string(ii) + ".csv", V, T, b, 7, P_min, P_max, iteration_times / split_num,
-								0, true, 0, 0, 0, 0, 0, one_edge_weight);
-							return 1; }));
-					}
-
-					/*vary P_min*/
-					if (1) {
-						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-							experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_P_min_1_" + to_string(ii) + ".csv", V, T, b, tau, 0.4, P_max, iteration_times / split_num,
-								true, true, true, 0, 0, true, true, one_edge_weight);
-							return 1; }));
-						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-							experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_P_min_2_" + to_string(ii) + ".csv", V, T, b, tau, 0.6, P_max, iteration_times / split_num,
-								true, true, true, 0, 0, true, true, one_edge_weight);
-							return 1; }));
-						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-							experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_P_min_3_" + to_string(ii) + ".csv", V, T, b, tau, 0.7, P_max, iteration_times / split_num,
-								true, true, true, 0, 0, true, true, one_edge_weight);
-							return 1; }));
-					}
-
-					/*vary P_max*/
-					if (1) {
-						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-							experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_P_max_1_" + to_string(ii) + ".csv", V, T, b, tau, P_min, 0.7, iteration_times / split_num,
-								true, true, true, 0, 0, true, true, one_edge_weight);
-							return 1; }));
-						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-							experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_P_max_2_" + to_string(ii) + ".csv", V, T, b, tau, P_min, 0.8, iteration_times / split_num,
-								true, true, true, 0, 0, true, true, one_edge_weight);
-							return 1; }));
-						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-							experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_P_max_3_" + to_string(ii) + ".csv", V, T, b, tau, P_min, 1, iteration_times / split_num,
-								true, true, true, 0, 0, true, true, one_edge_weight);
-							return 1; }));
-					}
-
-				}
-				for (auto&& result : results) {
-					result.get(); // wait for the below clear
-				}
-				results.clear();
-				clear_global_PLL_indexes("dblp_2497782", one_edge_weight);
-
-
-			}
-			
-		}		
-	}
+	
 
 }
 #pragma endregion experiments
@@ -3871,8 +3822,11 @@ void example_experiments() {
 #pragma endregion example_experiments
 
 
+
+
 int main()
 {
+	cout << "Start running..." << endl;
 	auto begin = std::chrono::high_resolution_clock::now();
 
 	/*the two values below are for #include <graph_hash_of_mixed_weighted.h>*/

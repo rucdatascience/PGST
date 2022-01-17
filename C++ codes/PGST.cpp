@@ -1169,29 +1169,12 @@ graph_hash_of_mixed_weighted algo3_GREPATH_graph_v_of_v_idealID(graph_v_of_v_ide
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /*experiments*/
 
 /*read raw data*/
 
 #pragma region 
-void read_dblp_v12(graph_hash_of_mixed_weighted& read_graph, graph_hash_of_mixed_weighted& read_group_graph, std::unordered_set<int>& group_vertices, string dblp_size) {
+void read_dblp_v12(graph_hash_of_mixed_weighted& read_graph, graph_hash_of_mixed_weighted& read_group_graph, std::unordered_set<int>& group_vertices) {
 
 	/* dblp_size is either 1248k or 2498k */
 
@@ -1204,7 +1187,7 @@ void read_dblp_v12(graph_hash_of_mixed_weighted& read_graph, graph_hash_of_mixed
 
 	int group_ID_start = 1e7;
 
-	string file_name = "DBLP_" + dblp_size + "_with_fosweights//dblp_v12_authors_" + dblp_size + ".txt";
+	string file_name = "DBLP_2498k_paper_with_fosweights//dblp_v12_papers.txt";
 	string line_content;
 	ifstream myfile(file_name); // open the file
 	if (myfile.is_open()) // if the file is opened successfully
@@ -1214,22 +1197,22 @@ void read_dblp_v12(graph_hash_of_mixed_weighted& read_graph, graph_hash_of_mixed
 		{
 			if (count > 0) {
 				std::vector<string> Parsed_content = parse_string(line_content, "<&>"); // parse line_content
+				if (Parsed_content.size() == 3) {
+					int paper_id = stoi(Parsed_content[0]);
+					graph_hash_of_mixed_weighted_add_vertex(read_graph, paper_id, 0); // add vertex to read_graph
+					graph_hash_of_mixed_weighted_add_vertex(read_group_graph, paper_id, 0); // add vertex to read_group_graph
 
-				int author_id = stoi(Parsed_content[0]);
-				double citation_num = stod(Parsed_content[3]);
-				double paper_num = stod(Parsed_content[4]);
-				graph_hash_of_mixed_weighted_add_vertex(read_graph, author_id, 0); // add vertex to read_graph
-				graph_hash_of_mixed_weighted_add_vertex(read_group_graph, author_id, 0); // add vertex to read_group_graph
-
-				std::vector<string> Parsed_fields = parse_substring_between_pairs_of_delimiters(Parsed_content[2], "<", ">"); // parse line_content
-				for (int i = 0; i < Parsed_fields.size(); i++) {
-					std::vector<string> xx = parse_string(Parsed_fields[i], ",");
-					if (string_is_number(xx[0]) && string_is_number(xx[1])) {
-						int group_id = group_ID_start + stoi(xx[0]);
-						group_vertices.insert(group_id);
-						graph_hash_of_mixed_weighted_add_edge(read_group_graph, author_id, group_id, stod(xx[1])); // add weighted edge (author-keyword weight) to read_group_graph
+					std::vector<string> Parsed_fields = parse_substring_between_pairs_of_delimiters(Parsed_content[2], "<", ">"); // parse line_content
+					for (int i = 0; i < Parsed_fields.size(); i++) {
+						std::vector<string> xx = parse_string(Parsed_fields[i], ",");
+						if (string_is_number(xx[0]) && string_is_number(xx[1])) {
+							int group_id = group_ID_start + stoi(xx[0]);
+							group_vertices.insert(group_id);
+							graph_hash_of_mixed_weighted_add_edge(read_group_graph, paper_id, group_id, stod(xx[1])); // add weighted edge (author-keyword weight) to read_group_graph
+						}
 					}
 				}
+				
 			}
 			count++;
 		}
@@ -1243,7 +1226,7 @@ void read_dblp_v12(graph_hash_of_mixed_weighted& read_graph, graph_hash_of_mixed
 	}
 
 
-	file_name = "DBLP_" + dblp_size + "_with_fosweights//dblp_v12_linkes_" + dblp_size + ".txt";
+	file_name = "DBLP_2498k_paper_with_fosweights//dblp_v12_links.txt";
 	ifstream myfile2(file_name); // open the file
 	if (myfile2.is_open()) // if the file is opened successfully
 	{
@@ -1252,9 +1235,11 @@ void read_dblp_v12(graph_hash_of_mixed_weighted& read_graph, graph_hash_of_mixed
 		{
 			if (count > 0) {
 				std::vector<string> Parsed_content = parse_string(line_content, "<&>"); // parse line_content
-				int id1 = stoi(Parsed_content[0]);
-				int id2 = stoi(Parsed_content[1]);
-				graph_hash_of_mixed_weighted_add_edge(read_graph, id1, id2, 1); // add edge to read_graph
+				if (Parsed_content.size() == 2) {
+					int id1 = stoi(Parsed_content[0]);
+					int id2 = stoi(Parsed_content[1]);
+					graph_hash_of_mixed_weighted_add_edge(read_graph, id1, id2, 1); // add edge to read_graph
+				}
 			}
 			count++;
 		}
@@ -1474,80 +1459,6 @@ void read_amazon(graph_hash_of_mixed_weighted& read_graph, graph_hash_of_mixed_w
 /*produce_small_graphs_for_experiments*/
 
 #pragma region
-void produce_small_dblp_v12() {
-
-	int new_V = 2497782 / 2;
-
-	ofstream outputFile;
-	outputFile.precision(6);
-	outputFile.setf(ios::fixed);
-	outputFile.setf(ios::showpoint);
-	outputFile.open("dblp_v12_authors_" + to_string((int)(new_V / 1e3)) + "k.txt");
-	outputFile << "Author_ID<&>Author_name<&>Fields_of_study_IDs_and_Weights<&>Citation_num<&>Paper_num(total_author_number:" << new_V << ")" << endl;
-
-
-	string file_name = "DBLP_2498k_with_fosweights//dblp_v12_authors.txt";
-	string line_content;
-	ifstream myfile(file_name); // open the file
-	if (myfile.is_open()) // if the file is opened successfully
-	{
-		int count = 0;
-		while (getline(myfile, line_content)) // read file line by line
-		{
-			if (count > 0) {
-				std::vector<string> Parsed_content = parse_string(line_content, "<&>"); // parse line_content
-
-				int author_id = stoi(Parsed_content[0]);
-				if (author_id < new_V) {
-					outputFile << line_content << endl;
-				}
-			}
-			count++;
-		}
-		myfile.close(); //close the file
-	}
-	else
-	{
-		std::cout << "Unable to open file " << file_name << endl << "Please check the file location or file name." << endl; // throw an error message
-		getchar(); // keep the console window
-		exit(1); // end the program
-	}
-	outputFile.close();
-
-
-
-	file_name = "DBLP_2498k_with_fosweights//dblp_v12_linkes.txt";
-	outputFile.open("dblp_v12_linkes_" + to_string((int)(new_V / 1e3)) + "k.txt");
-	outputFile << "Author_ID1<&>Author_ID2" << endl;
-	ifstream myfile2(file_name); // open the file
-	if (myfile2.is_open()) // if the file is opened successfully
-	{
-		int count = 0;
-		while (getline(myfile2, line_content)) // read file line by line
-		{
-			if (count > 0) {
-				std::vector<string> Parsed_content = parse_string(line_content, "<&>"); // parse line_content
-				int id1 = stoi(Parsed_content[0]);
-				int id2 = stoi(Parsed_content[1]);
-				if (id1 < new_V && id2 < new_V) {
-					outputFile << line_content << endl;
-				}
-			}
-			count++;
-		}
-		myfile2.close(); //close the file
-	}
-	else
-	{
-		std::cout << "Unable to open file " << file_name << endl << "Please check the file location or file name." << endl; // throw an error message
-		getchar(); // keep the console window
-		exit(1); // end the program
-	}
-	outputFile.close();
-}
-#pragma endregion produce_small_dblp_v12
-
-#pragma region
 void produce_small_graphs_for_experiments_element(string data_name, string save_read_graph_name, string save_read_group_graph_name, int V, bool one_edge_weight) {
 
 	/*read data*/
@@ -1556,7 +1467,7 @@ void produce_small_graphs_for_experiments_element(string data_name, string save_
 	std::unordered_set<int> old_group_vertices;
 	graph_hash_of_mixed_weighted old_read_graph, old_read_group_graph;
 	if (data_name == "dblp") {
-		read_dblp_v12(old_read_graph, old_read_group_graph, old_group_vertices, "2498k");
+		read_dblp_v12(old_read_graph, old_read_group_graph, old_group_vertices);
 		//if (one_edge_weight) {
 		//	read_dblp_v12(old_read_graph, old_read_group_graph, old_group_vertices, "2498k");
 		//}
@@ -1657,11 +1568,11 @@ void produce_binary_graph_files_for_experiments() {
 	//	return 1; }));
 
 	/* Jacard distance */
-	if (0) {
+	if (1) {
 		bool one_edge_weight = false;
 
 		/*amazon*/
-		if (1) {
+		if (0) {
 			string data_name = "amazon";
 			int V = 188552;
 			results.emplace_back(pool.enqueue([data_name, V, one_edge_weight] {
@@ -1677,21 +1588,13 @@ void produce_binary_graph_files_for_experiments() {
 				return 1; }));
 		}
 
-		/*dblp 1248k*/
+		/*dblp*/
 		if (1) {
 			string data_name = "dblp";
 			int V = 448891;
 			results.emplace_back(pool.enqueue([data_name, V, one_edge_weight] {
 				produce_small_graphs_for_experiments_element(data_name, data_name + "_read_graph_" + to_string(V) + ".bin", data_name + "_read_group_graph_" + to_string(V) + ".bin", V, one_edge_weight);
 				return 1; }));
-			//V = 848891;
-			//results.emplace_back(pool.enqueue([data_name, V, one_edge_weight] {
-			//	produce_small_graphs_for_experiments_element(data_name, data_name + "_read_graph_" + to_string(V) + ".bin", data_name + "_read_group_graph_" + to_string(V) + ".bin", V, one_edge_weight);
-			//	return 1; }));
-			//V = 1248891;
-			//results.emplace_back(pool.enqueue([data_name, V, one_edge_weight] {
-			//	produce_small_graphs_for_experiments_element(data_name, data_name + "_read_graph_" + to_string(V) + ".bin", data_name + "_read_group_graph_" + to_string(V) + ".bin", V, one_edge_weight);
-			//	return 1; }));
 			V = 2497782;
 			results.emplace_back(pool.enqueue([data_name, V, one_edge_weight] {
 				produce_small_graphs_for_experiments_element(data_name, data_name + "_read_graph_" + to_string(V) + ".bin", data_name + "_read_group_graph_" + to_string(V) + ".bin", V, one_edge_weight);
@@ -1699,7 +1602,7 @@ void produce_binary_graph_files_for_experiments() {
 		}
 
 		/*movie*/
-		if (1) {
+		if (0) {
 			string data_name = "movie";
 			int V = 22423;
 			results.emplace_back(pool.enqueue([data_name, V, one_edge_weight] {
@@ -1717,11 +1620,11 @@ void produce_binary_graph_files_for_experiments() {
 	}
 
 	/* one_edge_weight */
-	if (0) {
+	if (1) {
 		bool one_edge_weight = true;
 
 		/*amazon*/
-		if (1) {
+		if (0) {
 			string data_name = "amazon";
 			int V = 188552;
 			results.emplace_back(pool.enqueue([data_name, V, one_edge_weight] {
@@ -1744,10 +1647,6 @@ void produce_binary_graph_files_for_experiments() {
 			results.emplace_back(pool.enqueue([data_name, V, one_edge_weight] {
 				produce_small_graphs_for_experiments_element(data_name, data_name + "_read_graph_one_edge_weight_" + to_string(V) + ".bin", data_name + "_read_group_graph_one_edge_weight_" + to_string(V) + ".bin", V, one_edge_weight);
 				return 1; }));
-			V = 1697782;
-			results.emplace_back(pool.enqueue([data_name, V, one_edge_weight] {
-				produce_small_graphs_for_experiments_element(data_name, data_name + "_read_graph_one_edge_weight_" + to_string(V) + ".bin", data_name + "_read_group_graph_one_edge_weight_" + to_string(V) + ".bin", V, one_edge_weight);
-				return 1; }));
 			V = 2497782;
 			results.emplace_back(pool.enqueue([data_name, V, one_edge_weight] {
 				produce_small_graphs_for_experiments_element(data_name, data_name + "_read_graph_one_edge_weight_" + to_string(V) + ".bin", data_name + "_read_group_graph_one_edge_weight_" + to_string(V) + ".bin", V, one_edge_weight);
@@ -1755,7 +1654,7 @@ void produce_binary_graph_files_for_experiments() {
 		}
 
 		/*movie*/
-		if (1) {
+		if (0) {
 			string data_name = "movie";
 			int V = 22423;
 			results.emplace_back(pool.enqueue([data_name, V, one_edge_weight] {
@@ -1777,7 +1676,7 @@ void produce_binary_graph_files_for_experiments() {
 
 
 
-/*global PLL data; 120 GB*/
+/*global PLL data*/
 int global_dblp_2497782_PLL_indexes_loaded = 0, global_dblp_1248891_PLL_indexes_loaded = 0, global_dblp_848891_PLL_indexes_loaded = 0, global_dblp_448891_PLL_indexes_loaded = 0,
 global_movie_PLL_indexes_loaded = 0, global_amazon_PLL_indexes_loaded = 0,
 global_dblp_one_edge_weight_2497782_PLL_indexes_loaded = 0, global_dblp_one_edge_weight_1697782_PLL_indexes_loaded = 0, global_dblp_one_edge_weight_897782_PLL_indexes_loaded = 0,
@@ -1799,7 +1698,77 @@ string binary_file_root_path = "F://PLL";
 string binary_file_root_path = "PLL";
 #endif
 
+#pragma region
+graph_hash_of_mixed_weighted global_amazon_full_graph, global_amazon_full_graph_1ec, global_amazon_small_graph, global_amazon_small_graph_1ec,
+global_dblp_full_graph, global_dblp_full_graph_1ec, global_dblp_small_graph, global_dblp_small_graph_1ec,
+global_movie_full_graph, global_movie_full_graph_1ec;
 
+void load_global_graphs(string type) {
+	if (type == "global_amazon_full_graph") {
+		global_amazon_full_graph = graph_hash_of_mixed_weighted_binary_read(binary_file_root_path + "//amazon_read_graph_548552.bin");
+	}
+	else if (type == "global_amazon_small_graph") {
+		global_amazon_small_graph = graph_hash_of_mixed_weighted_binary_read(binary_file_root_path + "//amazon_read_graph_188552.bin");
+	}
+	else if (type == "global_amazon_full_graph_1ec") {
+		global_amazon_full_graph_1ec = graph_hash_of_mixed_weighted_binary_read(binary_file_root_path + "//amazon_read_graph_one_edge_weight_548552.bin");
+	}
+	else if (type == "global_amazon_small_graph_1ec") {
+		global_amazon_small_graph_1ec = graph_hash_of_mixed_weighted_binary_read(binary_file_root_path + "//amazon_read_graph_one_edge_weight_188552.bin");
+	}
+	else if (type == "global_dblp_full_graph") {
+		global_dblp_full_graph = graph_hash_of_mixed_weighted_binary_read(binary_file_root_path + "//dblp_read_graph_2497782.bin");
+	}
+	else if (type == "global_dblp_small_graph") {
+		global_dblp_small_graph = graph_hash_of_mixed_weighted_binary_read(binary_file_root_path + "//dblp_read_graph_448891.bin");
+	}
+	else if (type == "global_dblp_full_graph_1ec") {
+		global_dblp_full_graph_1ec = graph_hash_of_mixed_weighted_binary_read(binary_file_root_path + "//dblp_read_graph_one_edge_weight_2497782.bin");
+	}
+	else if (type == "global_dblp_small_graph_1ec") {
+		global_dblp_small_graph_1ec = graph_hash_of_mixed_weighted_binary_read(binary_file_root_path + "//dblp_read_graph_one_edge_weight_897782.bin");
+	}
+	else if (type == "global_movie_full_graph") {
+		global_movie_full_graph = graph_hash_of_mixed_weighted_binary_read(binary_file_root_path + "//movie_read_graph_62423.bin");
+	}
+	else if (type == "global_movie_full_graph_1ec") {
+		global_movie_full_graph_1ec = graph_hash_of_mixed_weighted_binary_read(binary_file_root_path + "//movie_read_graph_one_edge_weight_62423.bin");
+	}
+}
+
+void clear_global_graphs(string type) {
+	if (type == "global_amazon_full_graph") {
+		global_amazon_full_graph.clear();
+	}
+	else if (type == "global_amazon_small_graph") {
+		global_amazon_small_graph.clear();
+	}
+	else if (type == "global_amazon_full_graph_1ec") {
+		global_amazon_full_graph_1ec.clear();
+	}
+	else if (type == "global_amazon_small_graph_1ec") {
+		global_amazon_small_graph_1ec.clear();
+	}
+	else if (type == "global_dblp_full_graph") {
+		global_dblp_full_graph.clear();
+	}
+	else if (type == "global_dblp_small_graph") {
+		global_dblp_small_graph.clear();
+	}
+	else if (type == "global_dblp_full_graph_1ec") {
+		global_dblp_full_graph_1ec.clear();
+	}
+	else if (type == "global_dblp_small_graph_1ec") {
+		global_dblp_small_graph_1ec.clear();
+	}
+	else if (type == "global_movie_full_graph") {
+		global_movie_full_graph.clear();
+	}
+	else if (type == "global_movie_full_graph_1ec") {
+		global_movie_full_graph_1ec.clear();
+	}
+}
+#pragma endregion load_global_graphs
 
 /*generate PLL labels for experiments*/
 #pragma region
@@ -1922,17 +1891,12 @@ void generate_binary_PLL_indexes() {
 
 	int pool_size_for_PLL_code = 50;
 
-	string data_name = "dblp";
-	bool one_edge_weight = false;
-	int V = 2497782;
-	generate_binary_PLL_indexes_element(data_name, V, one_edge_weight, pool_size_for_PLL_code);
-
 	/*Jacard dis*/
-	if (0) {
+	if (1) {
 		bool one_edge_weight = false;
 
 		/*amazon*/
-		if (1) {
+		if (0) {
 			string data_name = "amazon";
 			int V = 188552;
 			generate_binary_PLL_indexes_element(data_name, V, one_edge_weight, pool_size_for_PLL_code);
@@ -1941,7 +1905,7 @@ void generate_binary_PLL_indexes() {
 		}
 
 		/*movie*/
-		if (1) {
+		if (0) {
 			string data_name = "movie";
 			int V = 62423;
 			generate_binary_PLL_indexes_element(data_name, V, one_edge_weight, pool_size_for_PLL_code);
@@ -1952,18 +1916,18 @@ void generate_binary_PLL_indexes() {
 			string data_name = "dblp";
 			int V = 448891;
 			generate_binary_PLL_indexes_element(data_name, V, one_edge_weight, pool_size_for_PLL_code);
-			V = 1248891;
+			V = 2497782;
 			generate_binary_PLL_indexes_element(data_name, V, one_edge_weight, pool_size_for_PLL_code);
 		}
 	}
 
 
 	/*one_edge_weight*/
-	if (0) {
+	if (1) {
 		bool one_edge_weight = true;
 
 		/*amazon*/
-		if (1) {
+		if (0) {
 			string data_name = "amazon";
 			int V = 188552;
 			generate_binary_PLL_indexes_element(data_name, V, one_edge_weight, pool_size_for_PLL_code);
@@ -1972,7 +1936,7 @@ void generate_binary_PLL_indexes() {
 		}
 
 		/*movie*/
-		if (1) {
+		if (0) {
 			string data_name = "movie";
 			int V = 62423;
 			generate_binary_PLL_indexes_element(data_name, V, one_edge_weight, pool_size_for_PLL_code);
@@ -2270,127 +2234,91 @@ graph_hash_of_mixed_weighted produce_small_group_graph(std::unordered_set<int>& 
 #pragma endregion produce_small_group_graph
 
 #pragma region
-void load_graphs(graph_hash_of_mixed_weighted& old_read_graph, graph_hash_of_mixed_weighted& old_read_group_graph, 
+void load_graphs(graph_hash_of_mixed_weighted*& old_read_graph, graph_hash_of_mixed_weighted& old_read_group_graph, 
 	string data_name, int V, bool& generate_new_small_graphs_and_PLL, bool one_edge_weight) {
 
 	if (one_edge_weight) {
 		if (data_name == "dblp") {
 			if (V == 2497782) {
-				old_read_graph = graph_hash_of_mixed_weighted_binary_read(binary_file_root_path + "//dblp_read_graph_one_edge_weight_2497782.bin");
+				old_read_graph = &global_dblp_full_graph_1ec;
 				old_read_group_graph = graph_hash_of_mixed_weighted_binary_read(binary_file_root_path + "//dblp_read_group_graph_one_edge_weight_2497782.bin");
 			}
-			else if (V == 1697782) {
-				old_read_graph = graph_hash_of_mixed_weighted_binary_read(binary_file_root_path + "//dblp_read_graph_one_edge_weight_1697782.bin");
-				old_read_group_graph = graph_hash_of_mixed_weighted_binary_read(binary_file_root_path + "//dblp_read_group_graph_one_edge_weight_1697782.bin");
-			}
 			else if (V == 897782) {
-				old_read_graph = graph_hash_of_mixed_weighted_binary_read(binary_file_root_path + "//dblp_read_graph_one_edge_weight_897782.bin");
+				old_read_graph = &global_dblp_small_graph_1ec;
 				old_read_group_graph = graph_hash_of_mixed_weighted_binary_read(binary_file_root_path + "//dblp_read_group_graph_one_edge_weight_897782.bin");
 			}
 			else {
 				generate_new_small_graphs_and_PLL = true;
-				old_read_graph = graph_hash_of_mixed_weighted_binary_read(binary_file_root_path + "//dblp_read_graph_one_edge_weight_2497782.bin");
+				old_read_graph = &global_dblp_full_graph_1ec;
 				old_read_group_graph = graph_hash_of_mixed_weighted_binary_read(binary_file_root_path + "//dblp_read_group_graph_one_edge_weight_2497782.bin");
 			}
 		}
 		else if (data_name == "movie") {
 			if (V == 62423) {
-				old_read_graph = graph_hash_of_mixed_weighted_binary_read(binary_file_root_path + "//movie_read_graph_one_edge_weight_62423.bin");
+				old_read_graph = &global_movie_full_graph_1ec;
 				old_read_group_graph = graph_hash_of_mixed_weighted_binary_read(binary_file_root_path + "//movie_read_group_graph_one_edge_weight_62423.bin");
-			}
-			else if (V == 42423) {
-				old_read_graph = graph_hash_of_mixed_weighted_binary_read(binary_file_root_path + "//movie_read_graph_one_edge_weight_42423.bin");
-				old_read_group_graph = graph_hash_of_mixed_weighted_binary_read(binary_file_root_path + "//movie_read_group_graph_one_edge_weight_42423.bin");
-			}
-			else if (V == 22423) {
-				old_read_graph = graph_hash_of_mixed_weighted_binary_read(binary_file_root_path + "//movie_read_graph_one_edge_weight_22423.bin");
-				old_read_group_graph = graph_hash_of_mixed_weighted_binary_read(binary_file_root_path + "//movie_read_group_graph_one_edge_weight_22423.bin");
 			}
 			else {
 				generate_new_small_graphs_and_PLL = true;
-				old_read_graph = graph_hash_of_mixed_weighted_binary_read(binary_file_root_path + "//movie_read_graph_one_edge_weight_62423.bin");
+				old_read_graph = &global_movie_full_graph_1ec;
 				old_read_group_graph = graph_hash_of_mixed_weighted_binary_read(binary_file_root_path + "//movie_read_group_graph_one_edge_weight_62423.bin");
 			}
 		}
 		else if (data_name == "amazon") {
 			if (V == 548552) {
-				old_read_graph = graph_hash_of_mixed_weighted_binary_read(binary_file_root_path + "//amazon_read_graph_one_edge_weight_548552.bin");
+				old_read_graph = &global_amazon_full_graph_1ec;
 				old_read_group_graph = graph_hash_of_mixed_weighted_binary_read("PLL//amazon_read_group_graph_one_edge_weight_548552.bin");
 			}
-			else if (V == 368552) {
-				old_read_graph = graph_hash_of_mixed_weighted_binary_read(binary_file_root_path + "//amazon_read_graph_one_edge_weight_368552.bin");
-				old_read_group_graph = graph_hash_of_mixed_weighted_binary_read("PLL//amazon_read_group_graph_one_edge_weight_368552.bin");
-			}
 			else if (V == 188552) {
-				old_read_graph = graph_hash_of_mixed_weighted_binary_read(binary_file_root_path + "//amazon_read_graph_one_edge_weight_188552.bin");
+				old_read_graph = &global_amazon_small_graph_1ec;
 				old_read_group_graph = graph_hash_of_mixed_weighted_binary_read(binary_file_root_path + "//amazon_read_group_graph_one_edge_weight_188552.bin");
 			}
 			else {
 				generate_new_small_graphs_and_PLL = true;
-				old_read_graph = graph_hash_of_mixed_weighted_binary_read(binary_file_root_path + "//amazon_read_graph_one_edge_weight_548552.bin");
+				old_read_graph = &global_amazon_full_graph_1ec;
 				old_read_group_graph = graph_hash_of_mixed_weighted_binary_read(binary_file_root_path + "//amazon_read_group_graph_one_edge_weight_548552.bin");
 			}
 		}
 	}
 	else {
 		if (data_name == "dblp") {
-			if (V == 1248891) {
-				old_read_graph = graph_hash_of_mixed_weighted_binary_read(binary_file_root_path + "//dblp_read_graph_1248891.bin");
-				old_read_group_graph = graph_hash_of_mixed_weighted_binary_read(binary_file_root_path + "//dblp_read_group_graph_1248891.bin");
-			}
-			else if (V == 848891) {
-				old_read_graph = graph_hash_of_mixed_weighted_binary_read(binary_file_root_path + "//dblp_read_graph_848891.bin");
-				old_read_group_graph = graph_hash_of_mixed_weighted_binary_read(binary_file_root_path + "//dblp_read_group_graph_848891.bin");
-			}
-			else if (V == 448891) {
-				old_read_graph = graph_hash_of_mixed_weighted_binary_read(binary_file_root_path + "//dblp_read_graph_448891.bin");
+			if (V == 448891) {
+				old_read_graph = &global_dblp_small_graph;
 				old_read_group_graph = graph_hash_of_mixed_weighted_binary_read(binary_file_root_path + "//dblp_read_group_graph_448891.bin");
 			}
 			else if (V == 2497782) {
-				old_read_graph = graph_hash_of_mixed_weighted_binary_read(binary_file_root_path + "//dblp_read_graph_2497782.bin");
+				old_read_graph = &global_dblp_full_graph;
 				old_read_group_graph = graph_hash_of_mixed_weighted_binary_read(binary_file_root_path + "//dblp_read_group_graph_2497782.bin");
 			}
 			else {
 				generate_new_small_graphs_and_PLL = true;
-				old_read_graph = graph_hash_of_mixed_weighted_binary_read(binary_file_root_path + "//dblp_read_graph_1248891.bin");
-				old_read_group_graph = graph_hash_of_mixed_weighted_binary_read(binary_file_root_path + "//dblp_read_group_graph_1248891.bin");
+				old_read_graph = &global_dblp_full_graph;
+				old_read_group_graph = graph_hash_of_mixed_weighted_binary_read(binary_file_root_path + "//dblp_read_group_graph_2497782.bin");
 			}
 		}
 		else if (data_name == "movie") {
 			if (V == 62423) {
-				old_read_graph = graph_hash_of_mixed_weighted_binary_read(binary_file_root_path + "//movie_read_graph_62423.bin");
+				old_read_graph = &global_movie_full_graph;
 				old_read_group_graph = graph_hash_of_mixed_weighted_binary_read(binary_file_root_path + "//movie_read_group_graph_62423.bin");
-			}
-			else if (V == 42423) {
-				old_read_graph = graph_hash_of_mixed_weighted_binary_read(binary_file_root_path + "//movie_read_graph_42423.bin");
-				old_read_group_graph = graph_hash_of_mixed_weighted_binary_read(binary_file_root_path + "//movie_read_group_graph_42423.bin");
-			}
-			else if (V == 22423) {
-				old_read_graph = graph_hash_of_mixed_weighted_binary_read(binary_file_root_path + "//movie_read_graph_22423.bin");
-				old_read_group_graph = graph_hash_of_mixed_weighted_binary_read(binary_file_root_path + "//movie_read_group_graph_22423.bin");
 			}
 			else {
 				generate_new_small_graphs_and_PLL = true;
-				old_read_graph = graph_hash_of_mixed_weighted_binary_read(binary_file_root_path + "//movie_read_graph_62423.bin");
+				old_read_graph = &global_movie_full_graph;
 				old_read_group_graph = graph_hash_of_mixed_weighted_binary_read(binary_file_root_path + "//movie_read_group_graph_62423.bin");
 			}
 		}
 		else if (data_name == "amazon") {
 			if (V == 548552) {
-				old_read_graph = graph_hash_of_mixed_weighted_binary_read(binary_file_root_path + "//amazon_read_graph_548552.bin");
-				old_read_group_graph = graph_hash_of_mixed_weighted_binary_read("PLL//amazon_read_group_graph_548552.bin");
-			}
-			else if (V == 368552) {
-				old_read_graph = graph_hash_of_mixed_weighted_binary_read(binary_file_root_path + "//amazon_read_graph_368552.bin");
-				old_read_group_graph = graph_hash_of_mixed_weighted_binary_read("PLL//amazon_read_group_graph_368552.bin");
+				old_read_graph = &global_amazon_full_graph;
+				old_read_group_graph = graph_hash_of_mixed_weighted_binary_read(binary_file_root_path + "//amazon_read_group_graph_548552.bin");
 			}
 			else if (V == 188552) {
-				old_read_graph = graph_hash_of_mixed_weighted_binary_read(binary_file_root_path + "//amazon_read_graph_188552.bin");
+				old_read_graph = &global_amazon_small_graph;
 				old_read_group_graph = graph_hash_of_mixed_weighted_binary_read(binary_file_root_path + "//amazon_read_group_graph_188552.bin");
 			}
 			else {
 				generate_new_small_graphs_and_PLL = true;
-				old_read_graph = graph_hash_of_mixed_weighted_binary_read(binary_file_root_path + "//amazon_read_graph_548552.bin");
+				old_read_graph = &global_amazon_full_graph;
 				old_read_group_graph = graph_hash_of_mixed_weighted_binary_read(binary_file_root_path + "//amazon_read_group_graph_548552.bin");
 			}
 		}
@@ -2579,7 +2507,9 @@ int experiment_element(string data_name, string save_name, int V, int T, double 
 		"cost_DUAL_P,time_DUAL_P,cost_GRETREE_P,time_GRETREE_P,cost_GREPATH_P,time_GREPATH_P,cost_DPBF_P,time_DPBF_P" << endl;
 
 	/*read data*/
-	graph_hash_of_mixed_weighted old_read_graph, old_read_group_graph;
+	graph_hash_of_mixed_weighted x;
+	graph_hash_of_mixed_weighted* old_read_graph = &x; 
+	graph_hash_of_mixed_weighted old_read_group_graph;
 	bool generate_new_small_graphs_and_PLL = false;
 	load_graphs(old_read_graph, old_read_group_graph, data_name, V, generate_new_small_graphs_and_PLL, one_edge_weight);
 	graph_hash_of_mixed_weighted_ec_normalization_with_range(old_read_group_graph, P_min, P_max); // probability of v-g is weight of edge (v,g) in old_read_group_graph
@@ -2599,8 +2529,8 @@ int experiment_element(string data_name, string save_name, int V, int T, double 
 		vector<vector<PLL_sorted_label>> newly_generated_PLL_indexes; // newly_generated_PLL_indexes is used when need_to_generate_PLL_indexes=true, otherwise global indexes are used
 		if (generate_new_small_graphs_and_PLL) {
 
-			unordered_set<int> selected_vertices = graph_hash_of_mixed_weighted_breadth_first_search_a_fixed_number_of_vertices_in_unconnected_graphs_start_from_maxcpn(old_read_graph, V);
-			graph_hash_of_mixed_weighted small_read_graph = graph_hash_of_mixed_weighted_extract_subgraph_for_a_hash_of_vertices(old_read_graph, selected_vertices);
+			unordered_set<int> selected_vertices = graph_hash_of_mixed_weighted_breadth_first_search_a_fixed_number_of_vertices_in_unconnected_graphs_start_from_maxcpn(*old_read_graph, V);
+			graph_hash_of_mixed_weighted small_read_graph = graph_hash_of_mixed_weighted_extract_subgraph_for_a_hash_of_vertices(*old_read_graph, selected_vertices);
 
 			/*compute small_read_graph_group_vertices and sampled_group_vertices*/
 			std::unordered_set<int> small_read_graph_group_vertices;
@@ -2625,7 +2555,7 @@ int experiment_element(string data_name, string save_name, int V, int T, double 
 				times--;
 				continue;
 			}
-			cpn = graph_hash_of_mixed_weighted_connected_components_vector_format(small_read_graph, old_read_graph.hash_of_vectors.size()); // small_read_graph is needed here
+			cpn = graph_hash_of_mixed_weighted_connected_components_vector_format(small_read_graph, (*old_read_graph).hash_of_vectors.size()); // small_read_graph is needed here
 
 			sampled_group_vertices = randomly_sample_feasible_group_vertices(save_name, cpn, old_read_group_graph, small_read_graph_group_vertices, T, b);
 			if (T > sampled_group_vertices.size()) {
@@ -2633,14 +2563,14 @@ int experiment_element(string data_name, string save_name, int V, int T, double 
 				continue;
 			}
 
-			newly_generated_PLL_indexes = PLL_generate_indexes_weighted_single_thread(small_read_graph, old_read_graph.hash_of_vectors.size() + 1);
+			newly_generated_PLL_indexes = PLL_generate_indexes_weighted_single_thread(small_read_graph, (*old_read_graph).hash_of_vectors.size() + 1);
 		}
 		else {
-			cpn = graph_hash_of_mixed_weighted_connected_components_vector_format(old_read_graph, max_N_for_exp);
+			cpn = graph_hash_of_mixed_weighted_connected_components_vector_format(*old_read_graph, max_N_for_exp);
 
 			std::unordered_set<int> old_group_vertices;
 			for (auto it = old_read_group_graph.hash_of_vectors.begin(); it != old_read_group_graph.hash_of_vectors.end(); it++) {
-				if (old_read_graph.hash_of_vectors.count(it->first) == 0) {
+				if ((*old_read_graph).hash_of_vectors.count(it->first) == 0) {
 					old_group_vertices.insert(it->first);
 				}
 			}
@@ -2667,7 +2597,7 @@ int experiment_element(string data_name, string save_name, int V, int T, double 
 
 		for (auto i = cpn.begin(); i != cpn.end(); i++) {
 
-			graph_hash_of_mixed_weighted subgraph_g = graph_hash_of_mixed_weighted_extract_subgraph(old_read_graph, *i);
+			graph_hash_of_mixed_weighted subgraph_g = graph_hash_of_mixed_weighted_extract_subgraph(*old_read_graph, *i);
 
 			graph_hash_of_mixed_weighted subgraph_g_group_graph = produce_small_group_graph(sampled_group_vertices, subgraph_g, old_read_group_graph);
 
@@ -2707,9 +2637,6 @@ int experiment_element(string data_name, string save_name, int V, int T, double 
 						if (V == 2497782) {
 							PLL_indexes_pointer = &global_dblp_one_edge_weight_2497782_PLL_indexes;
 						}
-						else if (V == 1697782) {
-							PLL_indexes_pointer = &global_dblp_one_edge_weight_1697782_PLL_indexes;
-						}
 						else if (V == 897782) {
 							PLL_indexes_pointer = &global_dblp_one_edge_weight_897782_PLL_indexes;
 						}
@@ -2718,19 +2645,10 @@ int experiment_element(string data_name, string save_name, int V, int T, double 
 						if (V == 62423) {
 							PLL_indexes_pointer = &global_movie_one_edge_weight_62423_PLL_indexes;
 						}
-						else if (V == 42423) {
-							PLL_indexes_pointer = &global_movie_one_edge_weight_42423_PLL_indexes;
-						}
-						else if (V == 22423) {
-							PLL_indexes_pointer = &global_movie_one_edge_weight_22423_PLL_indexes;
-						}
 					}
 					else if (data_name == "amazon") {
 						if (V == 548552) {
 							PLL_indexes_pointer = &global_amazon_one_edge_weight_548552_PLL_indexes;
-						}
-						else if (V == 368552) {
-							PLL_indexes_pointer = &global_amazon_one_edge_weight_368552_PLL_indexes;
 						}
 						else if (V == 188552) {
 							PLL_indexes_pointer = &global_amazon_one_edge_weight_188552_PLL_indexes;
@@ -2739,13 +2657,7 @@ int experiment_element(string data_name, string save_name, int V, int T, double 
 				}
 				else {
 					if (data_name == "dblp") {
-						if (V == 1248891) {
-							PLL_indexes_pointer = &global_dblp_1248891_PLL_indexes;
-						}
-						else if (V == 848891) {
-							PLL_indexes_pointer = &global_dblp_848891_PLL_indexes;
-						}
-						else if (V == 448891) {
+						if (V == 448891) {
 							PLL_indexes_pointer = &global_dblp_448891_PLL_indexes;
 						}
 						else if (V == 2497782) {
@@ -2756,19 +2668,10 @@ int experiment_element(string data_name, string save_name, int V, int T, double 
 						if (V == 62423) {
 							PLL_indexes_pointer = &global_movie_62423_PLL_indexes;
 						}
-						else if (V == 42423) {
-							PLL_indexes_pointer = &global_movie_42423_PLL_indexes;
-						}
-						else if (V == 22423) {
-							PLL_indexes_pointer = &global_movie_22423_PLL_indexes;
-						}
 					}
 					else if (data_name == "amazon") {
 						if (V == 548552) {
 							PLL_indexes_pointer = &global_amazon_548552_PLL_indexes;
-						}
-						else if (V == 368552) {
-							PLL_indexes_pointer = &global_amazon_368552_PLL_indexes;
 						}
 						else if (V == 188552) {
 							PLL_indexes_pointer = &global_amazon_188552_PLL_indexes;
@@ -2809,194 +2712,28 @@ int experiment_element(string data_name, string save_name, int V, int T, double 
 #pragma endregion experiment_element
 
 #pragma region
-void V1_experiments() {
-
-	/* only DUAL and GRETREE do not need PLL indexes */
-
-	int pool_size = 40; // 20 is too many for full dblp 1ec£¬ while 15 uses 350GB RAM at most
-	ThreadPool pool(pool_size); // use pool_size threads
-	std::vector< std::future<int> > results;
-
-	/*Jacard*/
-	if (0) {
-		bool one_edge_weight = false;
-
-		/*amazon*/
-		if (0) {
-
-			string data_name = "amazon";
-			int iteration_times = 100;
-			int V = 548552, T = 5;
-			double b = 0.9, tau = 1, P_min = 0.5, P_max = 0.9;
-
-			int split_num = 10;
-			for (int ii = 1; ii <= split_num; ii++) {
-
-				/*vary V*/
-				if (1) {
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_vary_V_1_" + to_string(ii) + ".csv", 45, T, b, tau, P_min, P_max, iteration_times / split_num,
-							true, true, true, true, true, true, true, one_edge_weight);
-						return 1; })); // DUAL is sometimes very slow when V=70
-				}
-			}
-		}
-
-		/*movie 22 threads; 150 GB RAM*/
-		if (0) {
-
-			string data_name = "movie";
-			int iteration_times = 100;
-			int V = 62423, T = 5;
-			double b = 0.9, tau = 1, P_min = 0.5, P_max = 0.9;
-
-
-			int split_num = 10;
-			for (int ii = 1; ii <= split_num; ii++) {
-
-				/*vary V*/
-				if (1) {
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_vary_V_1_" + to_string(ii) + ".csv", 70, T, b, tau, P_min, P_max, iteration_times / split_num,
-							true, true, true, true, true, true, true, one_edge_weight);
-						return 1; }));
-				}
-			}
-
-
-		}
-
-		/*dblp*/
-		if (0) {
-
-			string data_name = "dblp";
-
-			int iteration_times = 100;
-
-			int V = 1248891, T = 5;
-			double b = 0.9, tau = 1, P_min = 0.5, P_max = 0.9;
-
-			/*others*/
-			if (1) {
-				int split_num = 10;
-				for (int ii = 1; ii <= split_num; ii++) {
-
-					/*vary V; 200 GB*/
-					if (1) {
-						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-							return experiment_element(data_name, "Exp_" + data_name + "_vary_V_1_" + to_string(ii) + ".csv", 90, T, b, tau, P_min, P_max, iteration_times / split_num,
-								true, true, true, true, true, true, true, one_edge_weight);
-						}));
-					}
-
-				}
-			}
-
-		}
-
-	}
-
-
-	/*one_edge_weight*/
-	if (1) {
-		bool one_edge_weight = true;
-
-		/*amazon*/
-		if (0) {
-
-			string data_name = "amazon";
-			int iteration_times = 100;
-			int V = 548552, T = 5;
-			double b = 0.9, tau = 1, P_min = 0.5, P_max = 0.9;
-
-			int split_num = 10;
-			for (int ii = 1; ii <= split_num; ii++) {
-
-				/*vary V*/
-				if (1) {
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_V_1_" + to_string(ii) + ".csv", 45, T, b, tau, P_min, P_max, iteration_times / split_num,
-							true, true, true, true, true, true, true, one_edge_weight); // 50 is sometimes too slow
-						return 1; }));
-				}
-			}
-
-		}
-
-		/*movie*/
-		if (0) {
-
-			string data_name = "movie";
-			int iteration_times = 100;
-			int V = 62423, T = 5;
-			double b = 0.9, tau = 1, P_min = 0.5, P_max = 0.9;
-
-			int split_num = 10;
-			for (int ii = 1; ii <= split_num; ii++) {
-
-				/*vary V*/
-				if (1) {
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_V_1_" + to_string(ii) + ".csv", 70, T, b, tau, P_min, P_max, iteration_times / split_num,
-							true, true, true, true, true, true, true, one_edge_weight);
-						return 1; }));
-				}
-
-			}
-
-		}
-
-		/*dblp 27 threads*/
-		if (1) {
-
-			string data_name = "dblp";
-			int iteration_times = 100;
-			int V = 2497782, T = 5;
-			double b = 0.9, tau = 1, P_min = 0.5, P_max = 0.9;
-
-			/*others*/
-			if (1) {
-				int split_num = 10;
-				for (int ii = 1; ii <= split_num; ii++) {
-
-					/*vary V*/
-					if (1) {
-						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-							experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_V_1_" + to_string(ii) + ".csv", 90, T, b, tau, P_min, P_max, iteration_times / split_num,
-								true, true, true, true, true, true, true, one_edge_weight);
-							return 1; }));
-					}
-
-				}
-			}
-
-		}
-	}
-
-}
-#pragma endregion V1_experiments
-
-#pragma region
 void experiments() {
 
 	/* only DUAL and GRETREE do not need PLL indexes */
 
 	int amazon_pool_size = 40; // 40 for 110GB
 	int movie_pool_size = 30; // 30 for 250GB
-	int dblp_pool_size_1ec = 15; // 1ec: 20 for 700GB+, while 15 uses 300GB RAM;        
-	int dblp_pool_size_J = 10; // Jacard: 10 for 450GB, 15 for 500GB
+	int dblp_pool_size_1ec = 15; // 1ec: 20 for 700GB+, while 15 uses 450GB RAM;        
+	int dblp_pool_size_J = 15; // 15 for 600GB
 	/*one_edge_weight*/
 	if (0) {
 		bool one_edge_weight = true;
 
 		/*amazon*/
-		if (1) {
+		if (0) {
 
 			ThreadPool pool(amazon_pool_size); // use pool_size threads
 			std::vector< std::future<int> > results;
 
 			string data_name = "amazon";
 			load_global_PLL_indexes(data_name, one_edge_weight);
+			load_global_graphs("global_amazon_full_graph_1ec");
+			load_global_graphs("global_amazon_small_graph_1ec");
 			int iteration_times = 100;
 			int V = 548552, T = 5;
 			double b = 0.9, tau = 1, P_min = 0.5, P_max = 0.9;
@@ -3108,16 +2845,20 @@ void experiments() {
 				result.get(); // wait for the below clear
 			}
 			clear_global_PLL_indexes("amazon", one_edge_weight);
+			clear_global_graphs("global_amazon_full_graph_1ec");
+			clear_global_graphs("global_amazon_small_graph_1ec");
 		}
 
 		/*movie*/
-		if (1) {
+		if (0) {
 
 			ThreadPool pool(movie_pool_size); // use pool_size threads
 			std::vector< std::future<int> > results;
 
 			string data_name = "movie";
 			load_global_PLL_indexes(data_name, one_edge_weight);
+			load_global_graphs("global_movie_full_graph_1ec");
+			load_global_graphs("global_movie_small_graph_1ec");
 			int iteration_times = 100;
 			int V = 62423, T = 5;
 			double b = 0.9, tau = 1, P_min = 0.5, P_max = 0.9;
@@ -3227,15 +2968,16 @@ void experiments() {
 				result.get(); // wait for the below clear
 			}
 			clear_global_PLL_indexes("movie", one_edge_weight);
+			clear_global_graphs("global_movie_full_graph_1ec");
+			clear_global_graphs("global_movie_small_graph_1ec");
 		}
 
 
 		/*dblp*/
 		if (1) {
 
-			ThreadPool pool(dblp_pool_size_1ec); // use pool_size threads
-			std::vector< std::future<int> > results;
-
+			load_global_graphs("global_dblp_full_graph_1ec");
+			load_global_graphs("global_dblp_small_graph_1ec");
 			string data_name = "dblp";
 			int iteration_times = 100;
 			int V = 2497782, T = 5;
@@ -3243,6 +2985,8 @@ void experiments() {
 
 			/*V2*/
 			if (1) {
+				ThreadPool pool(20); // use pool_size threads
+				std::vector< std::future<int> > results;
 
 				int split_num = 20;
 				if (1) {
@@ -3264,6 +3008,8 @@ void experiments() {
 
 			/*others*/
 			if (1) {
+				ThreadPool pool(dblp_pool_size_1ec); // use pool_size threads
+				std::vector< std::future<int> > results;
 
 				load_global_PLL_indexes("dblp_2497782", one_edge_weight);
 				int split_num = 20;
@@ -3369,6 +3115,9 @@ void experiments() {
 				clear_global_PLL_indexes("dblp_2497782", one_edge_weight);
 			}
 
+			clear_global_graphs("global_dblp_full_graph_1ec");
+			clear_global_graphs("global_dblp_small_graph_1ec");
+
 		}
 	}
 
@@ -3384,6 +3133,8 @@ void experiments() {
 
 			string data_name = "amazon";
 			load_global_PLL_indexes(data_name, one_edge_weight);
+			load_global_graphs("global_amazon_full_graph");
+			load_global_graphs("global_amazon_small_graph");
 			int iteration_times = 100;
 			int V = 548552, T = 5;
 			double b = 0.9, tau = 1, P_min = 0.5, P_max = 0.9;
@@ -3495,6 +3246,8 @@ void experiments() {
 				result.get(); // wait for the below clear
 			}
 			clear_global_PLL_indexes("amazon", one_edge_weight);
+			clear_global_graphs("global_amazon_full_graph");
+			clear_global_graphs("global_amazon_small_graph");
 		}
 
 		/*movie*/
@@ -3503,6 +3256,8 @@ void experiments() {
 			ThreadPool pool(movie_pool_size); // use pool_size threads
 			std::vector< std::future<int> > results;
 
+			load_global_graphs("global_movie_full_graph");
+			load_global_graphs("global_movie_small_graph");
 			string data_name = "movie";
 			load_global_PLL_indexes(data_name, one_edge_weight);
 			int iteration_times = 100;
@@ -3617,23 +3372,23 @@ void experiments() {
 				result.get(); // wait for the below clear
 			}
 			clear_global_PLL_indexes("movie", one_edge_weight);
+			clear_global_graphs("global_movie_full_graph");
+			clear_global_graphs("global_movie_small_graph");
 		}
 
 		/*dblp*/
 		if (1) {
-
-			ThreadPool pool(dblp_pool_size_J); // use pool_size threads
-			std::vector< std::future<int> > results;
-
+			load_global_graphs("global_dblp_full_graph");
+			load_global_graphs("global_dblp_small_graph");
 			string data_name = "dblp";
-
 			int iteration_times = 100;
-
 			int V = 2497782, T = 5;
 			double b = 0.9, tau = 1, P_min = 0.5, P_max = 0.9;
 
 			/*V2*/
-			if (0) {
+			if (1) {
+				ThreadPool pool(20); // use pool_size threads
+				std::vector< std::future<int> > results;
 
 				int split_num = 20;
 
@@ -3654,6 +3409,9 @@ void experiments() {
 
 			/*others*/
 			if (1) {
+				ThreadPool pool(dblp_pool_size_J); // use pool_size threads
+				std::vector< std::future<int> > results;
+
 				load_global_PLL_indexes("dblp_2497782", one_edge_weight);
 				int split_num = 20;
 				for (int ii = 1; ii <= split_num; ii++) {
@@ -3757,70 +3515,16 @@ void experiments() {
 				results.clear();
 				clear_global_PLL_indexes("dblp_1248891", one_edge_weight);
 			}
+
+			clear_global_graphs("global_dblp_full_graph");
+			clear_global_graphs("global_dblp_small_graph");
 			
 		}
 
 	}
-
-
-	
 
 }
 #pragma endregion experiments
-
-#pragma region
-void example_experiments() {
-
-	/* only DUAL and GRETREE do not need PLL indexes */
-
-	int pool_size = 10; 
-	ThreadPool pool(pool_size); // use pool_size threads to do parallel computing
-	std::vector< std::future<int> > results;
-
-	/*one_edge_weight*/
-	if (1) {
-		bool one_edge_weight = true;
-		/*amazon*/
-		if (1) {
-			string data_name = "amazon";
-			load_global_PLL_indexes(data_name, one_edge_weight); // load the amazon hub labeling indexes, one_edge_weight is true means all edge costs are 1
-			int iteration_times = 100; // a random experiment with 100 times
-			int V = 548552, T = 5;
-			double b = 0.9, tau = 1, P_min = 0.5, P_max = 0.9;
-
-			/*the following is to split the 100 experiment into 10 parts, and then do these parts in parallel;
-			
-			for each part, call "experiment_element". The input values of "experiment_element" are as follows.
-
-			data_name: "amazon", "dblp", or "movie". This is to choose which dataset to run.
-			V: number of vertices.
-			T: number of vertex groups.
-			b: the threshold value.
-			tau: the approximation parameter.
-			P_min, P_max: the probability values as decribed in our paper.
-			iteration_times: how many random experiments to run.
-			use_ENSteiner, use_PrunedDPPP, etc: true is to use the algortihm, false is to not use.
-			one_edge_weight: true is to set all edge costs to 1, false is to set edge costs to Jaccard distances.
-			*/
-			int split_num = 10;
-			for (int ii = 1; ii <= split_num; ii++) {
-				results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-					experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_base_" + to_string(ii) + ".csv", V, T, b, tau, P_min, P_max, iteration_times / split_num,
-						true, true, true, 0, true, true, true, one_edge_weight); 
-					return 1; }));
-			}
-		}
-
-		for (auto&& result : results) {
-			result.get(); // wait for all the above threads to finish
-		}
-		results.clear();
-		clear_global_PLL_indexes("amazon", one_edge_weight); // clear the amazon hub labeling indexes
-	}
-
-}
-#pragma endregion example_experiments
-
 
 
 
@@ -3833,7 +3537,7 @@ int main()
 	graph_hash_of_mixed_weighted_turn_on_value = 1e3;
 	graph_hash_of_mixed_weighted_turn_off_value = 1e1;
 
-	example_experiments();
+	experiments();
 
 	auto end = std::chrono::high_resolution_clock::now();
 	double runningtime = std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count() / 1e9; // s

@@ -26,8 +26,9 @@ using namespace std;
 /*header files in the Boost library: https://www.boost.org/ */
 #include <boost/random.hpp>
 boost::random::mt19937 boost_random_time_seed{ static_cast<std::uint32_t>(std::time(0)) };
-
-
+#include <boost/heap/fibonacci_heap.hpp>
+#include <boost/heap/pairing_heap.hpp>
+#include <boost/heap/priority_queue.hpp>
 
 /*some other header files*/
 #include <graph_hash_of_mixed_weighted/graph_hash_of_mixed_weighted.h>
@@ -49,6 +50,7 @@ boost::random::mt19937 boost_random_time_seed{ static_cast<std::uint32_t>(std::t
 #include <text mining/parse_substring_between_two_unique_delimiters.h>
 #include <graph_hash_of_mixed_weighted/graph_hash_of_mixed_weighted_ec_update_pairwise_jaccard_distance.h>
 #include <graph_hash_of_mixed_weighted/graph_hash_of_mixed_weighted_breadth_first_search_a_fixed_number_of_vertices_in_unconnected_graphs_start_from_maxcpn.h>
+#include <graph_hash_of_mixed_weighted/graph_hash_of_mixed_weighted_random_walk_a_fixed_number_of_vertices_in_unconnected_graphs_start_from_maxcpn.h>
 #include <graph_v_of_v_idealID/graph_v_of_v_idealID_generate_random_connected_graph.h>
 #include <graph_v_of_v_idealID/graph_v_of_v_idealID_generate_random_groups_of_vertices.h>
 #include <graph_v_of_v_idealID/graph_v_of_v_idealID_read_for_GSTP.h>
@@ -58,7 +60,6 @@ boost::random::mt19937 boost_random_time_seed{ static_cast<std::uint32_t>(std::t
 #include <graph_v_of_v_idealID/graph_v_of_v_idealID_DPBF_only_ec.h>
 #include <graph_v_of_v_idealID/graph_v_of_v_idealID_breadth_first_search_a_set_of_vertices.h>
 #include <graph_v_of_v_idealID/graph_v_of_v_idealID_MST_postprocessing.h>
-
 
 
 /*some basic codes*/
@@ -356,7 +357,6 @@ bool this_is_an_essential_cover_of_g(graph_v_of_v_idealID& group_graph, vector<i
 
 
 
-
 /*ENSteiner*/
 
 #pragma region
@@ -396,7 +396,9 @@ graph_v_of_v_idealID transformation_to_STP_graph_v_of_v_idealID(graph_v_of_v_ide
 #pragma endregion transformation_to_STP_graph_v_of_v_idealID
 
 #pragma region
-graph_hash_of_mixed_weighted shortest_path_heuristic_1980_graph_v_of_v_idealID(graph_v_of_v_idealID& G_t, std::unordered_set<int>& G_t_compulsory_vertices) {
+graph_hash_of_mixed_weighted shortest_path_heuristic_1980_graph_v_of_v_idealID(graph_v_of_v_idealID& G_t, std::unordered_set<int>& G_t_compulsory_vertices, double& RAM) {
+
+	double bit_num = 0;
 
 	graph_hash_of_mixed_weighted solu_graph;
 
@@ -418,6 +420,7 @@ graph_hash_of_mixed_weighted shortest_path_heuristic_1980_graph_v_of_v_idealID(g
 		vector<int> predecessors;
 		graph_v_of_v_idealID_shortest_paths(G_t, source, distances, predecessors);
 		SPs[source] = { distances ,predecessors };
+		bit_num = bit_num + distances.size() * 8 + 2 * 8; // assume float; 2 pointers per vector
 	}
 
 
@@ -431,7 +434,7 @@ graph_hash_of_mixed_weighted shortest_path_heuristic_1980_graph_v_of_v_idealID(g
 			int unconnected_terminal = *it0;
 			for (auto it1 = solu_graph.hash_of_vectors.begin(); it1 != solu_graph.hash_of_vectors.end(); it1++) { // O(|V|)
 				int connected_terminal = it1->first;
-				double length = SPs[unconnected_terminal].first[connected_terminal];
+				float length = SPs[unconnected_terminal].first[connected_terminal];
 				if (length < path_length) {
 					path_V1_end = connected_terminal;
 					path_V2_end = unconnected_terminal;
@@ -452,21 +455,27 @@ graph_hash_of_mixed_weighted shortest_path_heuristic_1980_graph_v_of_v_idealID(g
 
 	}
 
+	RAM = bit_num / 1024 / 1024 + graph_hash_of_mixed_weighted_total_RAM_MB(solu_graph);
+
 	return solu_graph;
 
 }
 #pragma endregion shortest_path_heuristic_1980_graph_v_of_v_idealID
 
 #pragma region
-graph_hash_of_mixed_weighted ENSteiner(graph_v_of_v_idealID& input_graph, graph_v_of_v_idealID& group_graph, std::unordered_set<int>& cumpulsory_group_vertices) {
+graph_hash_of_mixed_weighted ENSteiner(graph_v_of_v_idealID& input_graph, graph_v_of_v_idealID& group_graph, std::unordered_set<int>& cumpulsory_group_vertices, double& RAM_MB) {
 
 	/*time complexity: O(|T||G_t_E|+|T||G_t_V|log|G_t_V|)*/
 
 	/*transformation_to_STP; time complexity: O(|V|+|E|)*/
 	graph_v_of_v_idealID G_t = transformation_to_STP_graph_v_of_v_idealID(input_graph, group_graph, cumpulsory_group_vertices);
 
+	RAM_MB = graph_v_of_v_idealID_total_RAM_MB(G_t);
+
 	/*time complexity: O(|T||G_t_E|+|T||G_t_V|log|G_t_V|)*/
-	graph_hash_of_mixed_weighted theta = shortest_path_heuristic_1980_graph_v_of_v_idealID(G_t, cumpulsory_group_vertices);
+	double RAM = 0;
+	graph_hash_of_mixed_weighted theta = shortest_path_heuristic_1980_graph_v_of_v_idealID(G_t, cumpulsory_group_vertices, RAM);
+	RAM_MB = RAM_MB + RAM;
 
 	/*remove_dummy_components; time complexity: O(|T|), as all terminals in leaves in LANCET solutions*/
 	for (auto it = cumpulsory_group_vertices.begin(); it != cumpulsory_group_vertices.end(); it++) {
@@ -484,7 +493,7 @@ graph_hash_of_mixed_weighted ENSteiner(graph_v_of_v_idealID& input_graph, graph_
 #pragma region
 struct node_for_removeleaf_graph_v_of_v_idealID {
 	int index;
-	double priority_value; // distance
+	float priority_value; // distance
 }; // define the node in the queue
 bool operator<(node_for_removeleaf_graph_v_of_v_idealID const& x, node_for_removeleaf_graph_v_of_v_idealID const& y) {
 	return x.priority_value < y.priority_value; // < is the max-heap; > is the min heap
@@ -511,28 +520,33 @@ bool this_is_a_non_unique_group_leaf(graph_hash_of_mixed_weighted& theta_dash,
 
 }
 
-void remove_non_unique_group_leaves_graph_v_of_v_idealID(graph_hash_of_mixed_weighted& theta_dash, graph_v_of_v_idealID& group_graph, std::unordered_set<int>& cumpulsory_group_vertices) {
+void remove_non_unique_group_leaves_graph_v_of_v_idealID(graph_hash_of_mixed_weighted& theta_dash, graph_v_of_v_idealID& group_graph, std::unordered_set<int>& cumpulsory_group_vertices, double& RAM_MB) {
 
 	/*time complexity O(|T||V|+|V|log|V|)*/
+	RAM_MB = 0;
+	double bit_num = 0;
 
 	/*time complexity O(|T||V|)*/
 	std::unordered_map<int, std::unordered_set<int>> groups_and_sets_of_vertices, vertices_and_sets_of_groups;
+	int xxm = sizeof(std::unordered_set<int>);
 	for (auto it = theta_dash.hash_of_vectors.begin(); it != theta_dash.hash_of_vectors.end(); it++) {
 		int v = it->first;
 		vertices_and_sets_of_groups[v] = {};
+		bit_num += xxm;
 	}
 	for (auto it = cumpulsory_group_vertices.begin(); it != cumpulsory_group_vertices.end(); it++) {
 		int group = *it;
 		groups_and_sets_of_vertices[group] = {};
+		bit_num += xxm;
 	}
 	for (auto it = cumpulsory_group_vertices.begin(); it != cumpulsory_group_vertices.end(); it++) {
 		int group = *it;
-
 		for (int i = group_graph[group].size() - 1; i >= 0; i--) {
 			int v = group_graph[group][i].first;
 			if (theta_dash.hash_of_vectors.count(v) > 0) {
 				groups_and_sets_of_vertices[group].insert(v);
 				vertices_and_sets_of_groups[v].insert(group);
+				bit_num += 8;
 			}
 		}
 	}
@@ -574,6 +588,9 @@ void remove_non_unique_group_leaves_graph_v_of_v_idealID(graph_hash_of_mixed_wei
 			}
 		}
 	}
+
+	bit_num += Q.size() * sizeof(node_for_removeleaf_graph_v_of_v_idealID);
+	RAM_MB += bit_num / 1024 / 1024;
 
 	/*time complexity O(|T||V|+|V|log|V|)*/
 	while (Q.size() > 0) {
@@ -620,7 +637,7 @@ void remove_non_unique_group_leaves_graph_v_of_v_idealID(graph_hash_of_mixed_wei
 struct node_ImprovAPP_onlyec {
 	int connected_v;
 	int unconncected_g;
-	double priority_value;
+	float priority_value;
 }; // define the node in the queue
 bool operator<(node_ImprovAPP_onlyec const& x, node_ImprovAPP_onlyec const& y) {
 	return x.priority_value > y.priority_value; // < is the max-heap; > is the min heap
@@ -628,7 +645,7 @@ bool operator<(node_ImprovAPP_onlyec const& x, node_ImprovAPP_onlyec const& y) {
 typedef typename boost::heap::fibonacci_heap<node_ImprovAPP_onlyec>::handle_type handle_node_ImprovAPP_onlyec;
 
 void ImprovAPP_onlyec_iteration_process(int v, int g_min, std::unordered_set<int>& cumpulsory_group_vertices,
-	graph_v_of_v_idealID& input_graph, graph_hash_of_mixed_weighted& theta_min, double& cost_theta_min, std::unordered_map<int, pair<vector<int>, vector<double>>>& SPs_to_groups) {
+	graph_v_of_v_idealID& input_graph, graph_hash_of_mixed_weighted& theta_min, double& cost_theta_min, std::unordered_map<int, pair<vector<int>, vector<float>>>& SPs_to_groups) {
 
 	/*time complexity: O(|T|(|V|+log|T|))*/
 
@@ -639,7 +656,7 @@ void ImprovAPP_onlyec_iteration_process(int v, int g_min, std::unordered_set<int
 	graph_hash_of_mixed_weighted theta_v;
 	node_ImprovAPP_onlyec node;
 	boost::heap::fibonacci_heap<node_ImprovAPP_onlyec> Q;
-	std::unordered_map<int, double> Q_keys;
+	std::unordered_map<int, float> Q_keys;
 	std::unordered_map<int, handle_node_ImprovAPP_onlyec> Q_handles;
 
 
@@ -668,7 +685,7 @@ void ImprovAPP_onlyec_iteration_process(int v, int g_min, std::unordered_set<int
 			graph_hash_of_mixed_weighted_add_vertex(theta_v, pre, 0);
 			V_newc.insert(pre); // pre is a newly connected vertex
 			V_c.insert(pre); // pre is a newly connected vertex
-			double ec = graph_v_of_v_idealID_edge_weight(input_graph, v_top, pre);
+			float ec = graph_v_of_v_idealID_edge_weight(input_graph, v_top, pre);
 			graph_hash_of_mixed_weighted_add_edge(theta_v, v_top, pre, ec);
 			v_top = pre;
 			pre = SPs_to_groups[g_top].first[v_top];
@@ -681,7 +698,7 @@ void ImprovAPP_onlyec_iteration_process(int v, int g_min, std::unordered_set<int
 			int new_v = *it;
 			for (auto it1 = Gamma_uc.begin(); it1 != Gamma_uc.end(); it1++) {
 				int g = *it1;
-				double new_v_to_g_weight = SPs_to_groups[g].second[new_v];
+				float new_v_to_g_weight = SPs_to_groups[g].second[new_v];
 				if (new_v_to_g_weight < Q_keys[g]) {
 					node.connected_v = new_v;
 					node.unconncected_g = g;
@@ -700,25 +717,32 @@ void ImprovAPP_onlyec_iteration_process(int v, int g_min, std::unordered_set<int
 		theta_min = theta_v;
 	}
 
+
+
 }
 #pragma endregion ImprovAPP_onlyec_iteration_process
 
 #pragma region
-graph_hash_of_mixed_weighted ImprovAPP_onlyec(graph_v_of_v_idealID& input_graph, graph_v_of_v_idealID& group_graph, std::unordered_set<int>& cumpulsory_group_vertices) {
+graph_hash_of_mixed_weighted ImprovAPP_onlyec(graph_v_of_v_idealID& input_graph, graph_v_of_v_idealID& group_graph, std::unordered_set<int>& cumpulsory_group_vertices, double& RAM_MB) {
 
 	/*time complexity: O(|T||E|+|T||V|log|V| + |g_min||T|(|V|+log|T|))*/
+	RAM_MB = 0;
+	double bit_num = 0;
 
 	int g_min = find_g_min_graph_v_of_v_idealID(group_graph, cumpulsory_group_vertices);
 	//cout << "g_min=" << g_min << endl;
 
 	/*time complexity: O(|T||E|+|T||V|log|V|)*/
-	std::unordered_map<int, pair<vector<int>, vector<double>>> SPs_to_groups;
+	std::unordered_map<int, pair<vector<int>, vector<float>>> SPs_to_groups;
 	for (auto it = cumpulsory_group_vertices.begin(); it != cumpulsory_group_vertices.end(); it++) {
 		int g_vertex = *it;
 		if (g_vertex != g_min) {
 			SPs_to_groups[g_vertex] = graph_v_of_v_idealID_PrunedDPPlusPlus_find_SPs_to_g(group_graph, input_graph, g_vertex);
+			bit_num += (SPs_to_groups[g_vertex].first.size() + SPs_to_groups[g_vertex].second.size()) * 4;
 		}
 	}
+	RAM_MB += bit_num / 1024 / 1024;
+
 
 	graph_hash_of_mixed_weighted theta_min;
 	double cost_theta_min = INT_MAX;
@@ -728,23 +752,26 @@ graph_hash_of_mixed_weighted ImprovAPP_onlyec(graph_v_of_v_idealID& input_graph,
 		ImprovAPP_onlyec_iteration_process(v, g_min, cumpulsory_group_vertices, input_graph, theta_min, cost_theta_min, SPs_to_groups);
 	}
 
+
 	/*update MST; time complexity: O(|E|+|V|log|V|)*/
 	unordered_set<int> G_min;
 	for (auto it = theta_min.hash_of_vectors.begin(); it != theta_min.hash_of_vectors.end(); it++) {
 		G_min.insert(it->first);
 	}
 	theta_min = graph_v_of_v_idealID_MST_postprocessing(input_graph, G_min);
+	RAM_MB += graph_hash_of_mixed_weighted_total_RAM_MB(theta_min);
 
 	/*time complexity O(|T||V|+|V|log|V|)*/
-	remove_non_unique_group_leaves_graph_v_of_v_idealID(theta_min, group_graph, cumpulsory_group_vertices);
+	double RAM = 0;
+	remove_non_unique_group_leaves_graph_v_of_v_idealID(theta_min, group_graph, cumpulsory_group_vertices, RAM);
+	RAM_MB += RAM;
+
 
 	/*time complexity: O(|V|)*/
 	return theta_min;
 
 }
 #pragma endregion ImprovAPP_onlyec
-
-
 
 
 /*proposed algorithms*/
@@ -790,7 +817,10 @@ std::vector<vector<int>> all_essential_covers_of_a_group_graph_v_of_v_idealID(gr
 
 #pragma region
 graph_hash_of_mixed_weighted algo1_DUAL_graph_v_of_v_idealID(graph_v_of_v_idealID& input_graph, graph_v_of_v_idealID& group_graph,
-	std::unordered_set<int>& cumpulsory_group_vertices, double b, double tau) {
+	std::unordered_set<int>& cumpulsory_group_vertices, double b, double tau, bool use_prunedDP, double& RAM_MB) {
+
+	RAM_MB = 0;
+	double bit_num = 0;
 
 	graph_hash_of_mixed_weighted solu_tree;
 	double solu_tree_weight = INT_MAX;
@@ -803,14 +833,23 @@ graph_hash_of_mixed_weighted algo1_DUAL_graph_v_of_v_idealID(graph_v_of_v_idealI
 		if (Phi_min_size > Phi[*it].size()) {
 			Phi_min_g = *it;
 		}
+		auto xxb = Phi[*it].begin(), xxe = Phi[*it].end();
+		for (auto xx = xxb; xx != xxe; xx++) {
+			bit_num += sizeof(vector<int>) + xx->size() * 4;
+		}
 	}
+	RAM_MB = bit_num / 1024 / 1024;
+
 
 	int N = input_graph.size();
 	graph_v_of_v_idealID group_graph_base(N);
 
+	double RAM_max = 0;
 	//cout << "Phi_min_g: " << Phi_min_g << endl;
 	auto it_begin = Phi[Phi_min_g].begin(), it_end = Phi[Phi_min_g].end();
 	for (; it_begin != it_end; it_begin++) {
+		double RAM = 0;
+
 		vector<int> V_dash = *it_begin;
 		graph_hash_of_mixed_weighted Theta_V_dash;
 
@@ -824,8 +863,14 @@ graph_hash_of_mixed_weighted algo1_DUAL_graph_v_of_v_idealID(graph_v_of_v_idealI
 				graph_v_of_v_idealID_add_edge(group_graph_base, V_dash[i], new_v_id, 0);
 				new_cumpulsory_group_vertices.insert(new_v_id);
 			}
+			if (use_prunedDP) {
+				Theta_V_dash = graph_v_of_v_idealID_PrunedDPPlusPlus(input_graph, group_graph_base, new_cumpulsory_group_vertices, tau, RAM);
+			}
+			else {
+				Theta_V_dash = ImprovAPP_onlyec(input_graph, group_graph_base, new_cumpulsory_group_vertices, RAM);
+			}
 
-			Theta_V_dash = graph_v_of_v_idealID_PrunedDPPlusPlus(input_graph, group_graph_base, new_cumpulsory_group_vertices, tau);
+			RAM += graph_v_of_v_idealID_total_RAM_MB(group_graph_base);
 
 			group_graph_base.resize(N);
 			for (int i = 0; i < V_dash.size(); i++) {
@@ -837,7 +882,10 @@ graph_hash_of_mixed_weighted algo1_DUAL_graph_v_of_v_idealID(graph_v_of_v_idealI
 
 			graph_hash_of_mixed_weighted G_dash;
 
+			double RAM_mmaxz = 0;
 			for (auto it1 = cumpulsory_group_vertices.begin(); it1 != cumpulsory_group_vertices.end(); it1++) {
+				double RAM_mmax = 0;
+
 				if (*it1 != Phi_min_g) {
 					int g = *it1;
 					graph_hash_of_mixed_weighted Theta_ST_V_dash_Phi_g;
@@ -845,6 +893,9 @@ graph_hash_of_mixed_weighted algo1_DUAL_graph_v_of_v_idealID(graph_v_of_v_idealI
 
 					auto it_begin2 = Phi[g].begin(), it_end2 = Phi[g].end();
 					for (; it_begin2 != it_end2; it_begin2++) {
+						double RAM_mm1 = 0;
+
+
 						vector<int> V_j = *it_begin2;
 						vector<int> V_combine;
 						V_combine.insert(V_combine.end(), V_dash.begin(), V_dash.end());
@@ -863,7 +914,18 @@ graph_hash_of_mixed_weighted algo1_DUAL_graph_v_of_v_idealID(graph_v_of_v_idealI
 						//cout << "group_graph_base: " << endl;
 						//graph_v_of_v_idealID_print(group_graph_base);
 
-						graph_hash_of_mixed_weighted Theta_V_dash_V_j = graph_v_of_v_idealID_PrunedDPPlusPlus(input_graph, group_graph_base, new_cumpulsory_group_vertices, tau);
+						graph_hash_of_mixed_weighted Theta_V_dash_V_j;
+						if (use_prunedDP) {
+							Theta_V_dash_V_j = graph_v_of_v_idealID_PrunedDPPlusPlus(input_graph, group_graph_base, new_cumpulsory_group_vertices, tau, RAM_mm1);
+						}
+						else {
+							Theta_V_dash_V_j = ImprovAPP_onlyec(input_graph, group_graph_base, new_cumpulsory_group_vertices, RAM_mm1);
+						}
+
+						RAM_mm1 += graph_v_of_v_idealID_total_RAM_MB(group_graph_base);
+						if (RAM_mmax < RAM_mm1) {
+							RAM_mmax = RAM_mm1;
+						}
 
 						group_graph_base.resize(N);
 						for (int i = 0; i < V_combine.size(); i++) {
@@ -879,13 +941,26 @@ graph_hash_of_mixed_weighted algo1_DUAL_graph_v_of_v_idealID(graph_v_of_v_idealI
 
 					graph_hash_of_mixed_weighted_merge_g2_into_g1(G_dash, Theta_ST_V_dash_Phi_g);
 				}
+
+				if (RAM_mmaxz < RAM_mmax) {
+					RAM_mmaxz = RAM_mmax;
+				}
+
 			}
+
+			RAM_mmaxz += graph_hash_of_mixed_weighted_total_RAM_MB(G_dash);
+			RAM_mmaxz += graph_v_of_v_idealID_total_RAM_MB(group_graph_base);
+			RAM += RAM_mmaxz;
 
 			std::unordered_set<int> hash_of_v;
 			for (auto it = G_dash.hash_of_vectors.begin(); it != G_dash.hash_of_vectors.end(); it++) {
 				hash_of_v.insert(it->first);
 			}
 			Theta_V_dash = graph_v_of_v_idealID_MST_postprocessing(input_graph, hash_of_v);
+		}
+
+		if (RAM_max < RAM) {
+			RAM_max = RAM;
 		}
 
 		double Theta_V_dash_weight = graph_hash_of_mixed_weighted_sum_of_ec(Theta_V_dash);
@@ -895,6 +970,8 @@ graph_hash_of_mixed_weighted algo1_DUAL_graph_v_of_v_idealID(graph_v_of_v_idealI
 		}
 
 	}
+
+	RAM_MB += RAM_max;
 
 	return solu_tree;
 }
@@ -929,7 +1006,7 @@ void add_a_new_vertex_update_not_covered_groups_graph_v_of_v_idealID(std::unorde
 }
 
 graph_hash_of_mixed_weighted algo2_GRETREE_graph_v_of_v_idealID(graph_v_of_v_idealID& input_graph, graph_v_of_v_idealID& group_graph,
-	std::unordered_set<int>& cumpulsory_group_vertices, double b, double tau) {
+	std::unordered_set<int>& cumpulsory_group_vertices, double b, double tau, bool use_prunedDP, double& RAM_MB) {
 
 	graph_hash_of_mixed_weighted solu_tree;
 	double solu_tree_weight = INT_MAX;
@@ -943,7 +1020,11 @@ graph_hash_of_mixed_weighted algo2_GRETREE_graph_v_of_v_idealID(graph_v_of_v_ide
 		}
 	}
 
+	double RAM_max = 0;
 	for (int i = group_graph[g_min].size() - 1; i >= 0; i--) {
+
+		double RAM = 0;
+
 		int v = group_graph[g_min][i].first;
 
 		graph_hash_of_mixed_weighted G_dash;
@@ -974,10 +1055,26 @@ graph_hash_of_mixed_weighted algo2_GRETREE_graph_v_of_v_idealID(graph_v_of_v_ide
 		/*update new_group_graph for the single vertex v*/
 		add_a_new_vertex_update_not_covered_groups_graph_v_of_v_idealID(not_covered_groups, v, group_graph, b, new_group_graph, new_cumpulsory_group_vertices);
 
-		/*iteratively concatinating*/
-		while (not_covered_groups.size() > 0) {
+		RAM += graph_v_of_v_idealID_total_RAM_MB(new_group_graph);
 
-			graph_hash_of_mixed_weighted Theta_dash = graph_v_of_v_idealID_PrunedDPPlusPlus(input_graph, new_group_graph, new_cumpulsory_group_vertices, tau);
+		/*iteratively concatinating*/
+		double RAM_while_max = 0;
+		while (not_covered_groups.size() > 0) {
+			double RAMx = 0;
+
+			graph_hash_of_mixed_weighted Theta_dash;
+			if (use_prunedDP) {
+				Theta_dash = graph_v_of_v_idealID_PrunedDPPlusPlus(input_graph, new_group_graph, new_cumpulsory_group_vertices, tau, RAMx);
+			}
+			else {
+				Theta_dash = ImprovAPP_onlyec(input_graph, new_group_graph, new_cumpulsory_group_vertices, RAMx);
+			}
+
+			RAMx += graph_hash_of_mixed_weighted_total_RAM_MB(Theta_dash);
+
+			if (RAM_while_max < RAMx) {
+				RAM_while_max = RAMx;
+			}
 
 			for (auto it = Theta_dash.hash_of_vectors.begin(); it != Theta_dash.hash_of_vectors.end(); it++) {
 				if (G_dash.hash_of_vectors.count(it->first) == 0) {
@@ -990,6 +1087,12 @@ graph_hash_of_mixed_weighted algo2_GRETREE_graph_v_of_v_idealID(graph_v_of_v_ide
 			graph_hash_of_mixed_weighted_merge_g2_into_g1(G_dash, Theta_dash);
 		}
 
+		RAM += RAM_while_max;
+		RAM += graph_hash_of_mixed_weighted_total_RAM_MB(G_dash);
+		if (RAM_max < RAM) {
+			RAM_max = RAM;
+		}
+
 		/*MST_postprocessing*/
 		graph_hash_of_mixed_weighted Theta_v = graph_v_of_v_idealID_MST_postprocessing(input_graph, G_dash_V_set);
 
@@ -1000,6 +1103,8 @@ graph_hash_of_mixed_weighted algo2_GRETREE_graph_v_of_v_idealID(graph_v_of_v_ide
 			solu_tree = Theta_v;
 		}
 	}
+
+	RAM_MB = RAM_max;
 
 	return solu_tree;
 }
@@ -1064,7 +1169,7 @@ void remove_redundent_leaves_graph_v_of_v_idealID(graph_hash_of_mixed_weighted& 
 #pragma region
 struct algo3_GREPATH_min_heap_node {
 	int u;
-	double priority_value;
+	float priority_value;
 };
 bool operator<(algo3_GREPATH_min_heap_node const& x, algo3_GREPATH_min_heap_node const& y) {
 	return x.priority_value > y.priority_value; // < is the max-heap; > is the min heap;
@@ -1081,8 +1186,8 @@ void add_a_new_vertex_update_not_cover_probabilities_graph_v_of_v_idealID(std::u
 }
 
 graph_hash_of_mixed_weighted algo3_GREPATH_graph_v_of_v_idealID(graph_v_of_v_idealID& input_graph, graph_v_of_v_idealID& group_graph,
-	std::unordered_set<int>& cumpulsory_group_vertices, double b, double tau, 
-	vector<vector<PLL_sorted_label>>& PLL_indexes, vector<int>& graph_id_2_PLL_id, vector<int>& PLL_id_2_graph_id) {
+	std::unordered_set<int>& cumpulsory_group_vertices, double b,
+	vector<vector<PLL_sorted_label>>& PLL_indexes, vector<int>& graph_id_2_PLL_id, vector<int>& PLL_id_2_graph_id, int heap_type, double& RAM_MB) {
 
 	graph_hash_of_mixed_weighted solu_tree;
 	double solu_tree_weight = INT_MAX;
@@ -1096,15 +1201,28 @@ graph_hash_of_mixed_weighted algo3_GREPATH_graph_v_of_v_idealID(graph_v_of_v_ide
 		}
 	}
 
+	double bit_num_max = 0;
 	for (int ii = group_graph[g_min].size() - 1; ii >= 0; ii--) {
 		int v = group_graph[g_min][ii].first;
 		int v_PLL_id = graph_id_2_PLL_id[v];
 
+		double bit_num = 0;
+
 		/*initialize heaps*/
+#if heap_type == 0
 		std::unordered_map<int, boost::heap::fibonacci_heap<algo3_GREPATH_min_heap_node>> heaps;
+		boost::heap::fibonacci_heap<algo3_GREPATH_min_heap_node> Q;
+#elif heap_type == 1
+		std::unordered_map<int, boost::heap::priority_queue<algo3_GREPATH_min_heap_node>> heaps; // boost::heap::priority_queue The priority_queue class is a wrapper to the stl heap functions, which is binary heap.  
+		boost::heap::priority_queue<algo3_GREPATH_min_heap_node> Q;
+#else
+		std::unordered_map<int, boost::heap::pairing_heap<algo3_GREPATH_min_heap_node>> heaps;
+		boost::heap::pairing_heap<algo3_GREPATH_min_heap_node> Q;
+#endif
+
 		algo3_GREPATH_min_heap_node node;
 		for (auto it = cumpulsory_group_vertices.begin(); it != cumpulsory_group_vertices.end(); it++) {
-			boost::heap::fibonacci_heap<algo3_GREPATH_min_heap_node> Q;
+			Q.clear();
 			for (int j = group_graph[*it].size() - 1; j >= 0; j--) {
 				double d_vu = PLL_extract_distance_vectorFORMAT(PLL_indexes, v_PLL_id, graph_id_2_PLL_id[group_graph[*it][j].first]);
 				node.u = group_graph[*it][j].first;
@@ -1112,6 +1230,11 @@ graph_hash_of_mixed_weighted algo3_GREPATH_graph_v_of_v_idealID(graph_v_of_v_ide
 				Q.push(node);
 			}
 			heaps[*it] = Q;
+			bit_num += Q.size() * sizeof(algo3_GREPATH_min_heap_node);
+		}
+
+		if (bit_num_max < bit_num) {
+			bit_num_max = bit_num;
 		}
 
 		graph_hash_of_mixed_weighted Theta_v;
@@ -1158,6 +1281,10 @@ graph_hash_of_mixed_weighted algo3_GREPATH_graph_v_of_v_idealID(graph_v_of_v_ide
 	for (auto it = solu_tree.hash_of_vectors.begin(); it != solu_tree.hash_of_vectors.end(); it++) {
 		hash_of_v.insert(it->first);
 	}
+
+
+	RAM_MB = bit_num_max / 1024 / 1024 + graph_hash_of_mixed_weighted_total_RAM_MB(solu_tree);
+
 	solu_tree = graph_v_of_v_idealID_MST_postprocessing(input_graph, hash_of_v);
 
 	//remove_redundent_leaves_graph_v_of_v_idealID(solu_tree, group_graph, cumpulsory_group_vertices, b);
@@ -1167,11 +1294,119 @@ graph_hash_of_mixed_weighted algo3_GREPATH_graph_v_of_v_idealID(graph_v_of_v_ide
 #pragma endregion algo3_GREPATH_graph_v_of_v_idealID
 
 
+/*iterative_SOTA; baselines in experiments*/
+
+#pragma region
+graph_hash_of_mixed_weighted iterative_SOTA_element(graph_v_of_v_idealID& input_graph, graph_v_of_v_idealID& input_group_graph, std::unordered_set<int>& compulsory_group_vertices, double tau, string algortihm_type, double& RAM_MB) {
+
+	if (algortihm_type == "DPBF") {
+		return graph_v_of_v_idealID_DPBF_only_ec(input_graph, input_group_graph, compulsory_group_vertices, RAM_MB);
+	}
+	else if (algortihm_type == "PrunedDPPP") {
+		return graph_v_of_v_idealID_PrunedDPPlusPlus(input_graph, input_group_graph, compulsory_group_vertices, tau, RAM_MB);
+	}
+	else if (algortihm_type == "ENSteiner") {
+		return ENSteiner(input_graph, input_group_graph, compulsory_group_vertices, RAM_MB);
+	}
+	else if (algortihm_type == "ImprovAPP") {
+		return ImprovAPP_onlyec(input_graph, input_group_graph, compulsory_group_vertices, RAM_MB);
+	}
+	else {
+		cout << "algortihm_type in iterative_SOTA_element is wrong!" << endl;
+		exit(1);
+	}
+
+}
+
+graph_hash_of_mixed_weighted iterative_SOTA(graph_v_of_v_idealID& input_graph, graph_v_of_v_idealID& group_graph, std::unordered_set<int>& cumpulsory_group_vertices, double b, double tau, string algortihm_type, double& RAM_MB, 
+	int k, vector<vector<PLL_sorted_label>>& PLL_indexes, vector<int>& graph_id_2_PLL_id, vector<int>& PLL_id_2_graph_id, double& PrunedDPPP_LB) {
+
+	RAM_MB = 0;
+
+	graph_hash_of_mixed_weighted best_solu;
+	double best_solu_weight = INT_MAX;
+
+	graph_v_of_v_idealID input_graph_copy = input_graph; // do not count RAM here, as this can be avoided
+
+	for (int i = 0; i < k; i++) {
+		double RAM = 0;
+		graph_hash_of_mixed_weighted solu = iterative_SOTA_element(input_graph_copy, group_graph, cumpulsory_group_vertices, tau, algortihm_type, RAM);
+
+		if (i == 0 && algortihm_type == "PrunedDPPP") {
+			PrunedDPPP_LB = graph_hash_of_mixed_weighted_sum_of_ec(solu);
+			//cout << "PrunedDPPP_LB:" << PrunedDPPP_LB << endl;
+		}
+
+		/*give large weights to edges of solu in input_graph_copy*/
+		for (auto it1 = solu.hash_of_vectors.begin(); it1 != solu.hash_of_vectors.end(); it1++) {
+			int i = it1->first;
+			auto search = solu.hash_of_hashs.find(i);
+			if (search != solu.hash_of_hashs.end()) {
+				for (auto it2 = search->second.begin(); it2 != search->second.end(); it2++) {
+					int j = it2->first;
+					if (i < j) {
+						double ec = it2->second;
+						graph_v_of_v_idealID_add_edge(input_graph_copy, i, j, ec + 1e5);
+					}
+				}
+			}
+			else {
+				auto search2 = solu.hash_of_vectors.find(i);
+				for (auto it2 = search2->second.adj_vertices.begin(); it2 != search2->second.adj_vertices.end(); it2++) {
+					int j = it2->first;
+					if (i < j) {
+						double ec = it2->second;
+						graph_v_of_v_idealID_add_edge(input_graph_copy, i, j, ec + 1e5);
+					}
+				}
+			}
+		}
+
+		std::unordered_set<int> solu_vectices;
+		for (auto itx = solu.hash_of_vectors.begin(); itx != solu.hash_of_vectors.end(); itx++) {
+			solu_vectices.insert(itx->first);
+		}
+		solu = graph_v_of_v_idealID_MST_postprocessing(input_graph, solu_vectices); // solu is an MST in input_graph now
+		solu = make_solutree_feasible(input_graph, group_graph, cumpulsory_group_vertices, solu, b, PLL_indexes, graph_id_2_PLL_id, PLL_id_2_graph_id);
+
+		RAM += graph_hash_of_mixed_weighted_total_RAM_MB(solu);
+		if (RAM_MB < RAM) {
+			RAM_MB = RAM;
+		}
+
+		solu_vectices.clear();
+		for (auto itx = solu.hash_of_vectors.begin(); itx != solu.hash_of_vectors.end(); itx++) {
+			solu_vectices.insert(itx->first);
+		}
+		solu = graph_v_of_v_idealID_MST_postprocessing(input_graph, solu_vectices);
+
+		double solu_weight = graph_hash_of_mixed_weighted_sum_of_ec(solu);
+		if (solu_weight < best_solu_weight) {
+			best_solu_weight = solu_weight;
+			best_solu = solu;
+		}
+	}
+
+	RAM_MB += graph_hash_of_mixed_weighted_total_RAM_MB(best_solu);
+
+	return best_solu;
+
+}
+#pragma endregion iterative_SOTA
+
+
+
+
+
+
+
+
 
 
 /*experiments*/
 
 /*read raw data*/
+int group_ID_start = 1e7; // this is for DBLP and movie, not amazon (which is 1e8)
 
 #pragma region 
 void read_dblp_v12(graph_hash_of_mixed_weighted& read_graph, graph_hash_of_mixed_weighted& read_group_graph, std::unordered_set<int>& group_vertices) {
@@ -1179,13 +1414,9 @@ void read_dblp_v12(graph_hash_of_mixed_weighted& read_graph, graph_hash_of_mixed
 	/* dblp_size is either 1248k or 2498k */
 
 	/*this function can clear existing graph data*/
-	read_graph.hash_of_vectors.clear();
-	read_graph.hash_of_hashs.clear();
-	read_group_graph.hash_of_vectors.clear();
-	read_group_graph.hash_of_hashs.clear();
-	group_vertices.clear();
-
-	int group_ID_start = 1e7;
+	read_graph.clear();
+	read_group_graph.clear();
+	std::unordered_set<int>().swap(group_vertices);
 
 	string file_name = "DBLP_2498k_paper_with_fosweights//dblp_v12_papers.txt";
 	string line_content;
@@ -1212,7 +1443,7 @@ void read_dblp_v12(graph_hash_of_mixed_weighted& read_graph, graph_hash_of_mixed
 						}
 					}
 				}
-				
+
 			}
 			count++;
 		}
@@ -1266,15 +1497,11 @@ void read_Movielens_25m(graph_hash_of_mixed_weighted& read_graph, graph_hash_of_
 	std::unordered_map<int, string>& movie_names, std::unordered_map<int, string>& genres_names, std::unordered_set<int>& group_vertices) {
 
 	/*this function can clear existing graph data*/
-	read_graph.hash_of_vectors.clear();
-	read_graph.hash_of_hashs.clear();
-	read_group_graph.hash_of_vectors.clear();
-	read_group_graph.hash_of_hashs.clear();
-	movie_names.clear();
-	genres_names.clear();
-	group_vertices.clear();
-
-	int group_ID_start = 1e7;
+	read_graph.clear();
+	read_group_graph.clear();
+	std::unordered_map<int, string>().swap(movie_names);
+	std::unordered_map<int, string>().swap(genres_names);
+	std::unordered_set<int>().swap(group_vertices);
 
 	std::unordered_map<std::string, int> genres_ids;
 
@@ -1373,11 +1600,9 @@ void read_Movielens_25m(graph_hash_of_mixed_weighted& read_graph, graph_hash_of_
 void read_amazon(graph_hash_of_mixed_weighted& read_graph, graph_hash_of_mixed_weighted& read_group_graph, std::unordered_set<int>& group_vertices) {
 
 	/*this function can clear existing graph data*/
-	read_graph.hash_of_vectors.clear();
-	read_graph.hash_of_hashs.clear();
-	read_group_graph.hash_of_vectors.clear();
-	read_group_graph.hash_of_hashs.clear();
-	group_vertices.clear();
+	read_graph.clear();
+	read_group_graph.clear();
+	std::unordered_set<int>().swap(group_vertices);
 
 	string file_name = "amazon//amazon_items.txt";
 	string line_content;
@@ -1456,6 +1681,167 @@ void read_amazon(graph_hash_of_mixed_weighted& read_graph, graph_hash_of_mixed_w
 }
 #pragma endregion read_amazon
 
+#pragma region
+void read_dblp_POIs(std::unordered_map<int, string>& POI_names) {
+
+	string file_name = "DBLP_2498k_paper_with_fosweights//dblp_v12_fields.txt";
+	string line_content;
+	ifstream myfile(file_name); // open the file
+	if (myfile.is_open()) // if the file is opened successfully
+	{
+		int count = 0;
+		while (getline(myfile, line_content)) // read file line by line
+		{
+			if (count > 0) {
+				std::vector<string> Parsed_content = parse_string(line_content, "<&>"); // parse line_content
+				if (Parsed_content.size() == 2) {
+					int g_id = group_ID_start + stoi(Parsed_content[0]);
+					POI_names[g_id] = Parsed_content[1];
+				}
+
+			}
+			count++;
+		}
+		myfile.close(); //close the file
+	}
+	else
+	{
+		std::cout << "Unable to open file " << file_name << endl << "Please check the file location or file name." << endl; // throw an error message
+		getchar(); // keep the console window
+		exit(1); // end the program
+	}
+
+}
+
+void read_movie_POIs(std::unordered_map<int, string>& POI_names) {
+
+	std::unordered_map<std::string, int> genres_ids;
+
+	string file_name = "MovieLens_25M//MovieLens_25M_movie_info.txt";
+	string line_content;
+	ifstream myfile(file_name); // open the file
+	if (myfile.is_open()) // if the file is opened successfully
+	{
+		int count = 0;
+		while (getline(myfile, line_content)) // read file line by line
+		{
+			if (count > 0) {
+				std::vector<string> Parsed_content = parse_string(line_content, ":::"); // parse line_content
+
+				std::vector<string> genres = parse_string(Parsed_content[3], "|");
+
+				//print_a_sequence_of_elements_v1(genres);
+
+				for (int i = 0; i < genres.size(); i++) {
+					int genre_id = stoi(parse_string(genres[i], "_")[0]);
+					if (genre_id != 19) { // != "(no genres listed)"
+						genre_id = genre_id + group_ID_start;
+						POI_names[genre_id] = parse_string(genres[i], "_")[1];
+					}
+				}
+			}
+			count++;
+		}
+		myfile.close(); //close the file
+	}
+	else
+	{
+		std::cout << "Unable to open file " << file_name << endl << "Please check the file location or file name." << endl; // throw an error message
+		getchar(); // keep the console window
+		exit(1); // end the program
+	}
+
+}
+
+void read_amazon_POIs(std::unordered_map<int, string>& POI_names) {
+
+	string file_name = "amazon//amazon_keywords.txt";
+	string line_content;
+	ifstream myfile(file_name); // open the file
+	if (myfile.is_open()) // if the file is opened successfully
+	{
+		int count = 0;
+		while (getline(myfile, line_content)) // read file line by line
+		{
+			if (count > 0) {
+				std::vector<string> Parsed_content = parse_string(line_content, "	"); // parse line_content
+				POI_names[stoi(Parsed_content[0])] = Parsed_content[1];
+			}
+			count++;
+		}
+		myfile.close(); //close the file
+	}
+	else
+	{
+		std::cout << "Unable to open file " << file_name << endl << "Please check the file location or file name." << endl; // throw an error message
+		getchar(); // keep the console window
+		exit(1); // end the program
+	}
+
+}
+
+#pragma endregion read_POIs
+
+#pragma region
+void read_node_names_dblp(std::unordered_map<int, string>& node_names) {
+
+	string file_name = "DBLP_2498k_paper_with_fosweights//dblp_v12_papers.txt";
+	string line_content;
+	ifstream myfile(file_name); // open the file
+	if (myfile.is_open()) // if the file is opened successfully
+	{
+		int count = 0;
+		while (getline(myfile, line_content)) // read file line by line
+		{
+			if (count > 0) {
+				std::vector<string> Parsed_content = parse_string(line_content, "<&>"); // parse line_content
+				if (Parsed_content.size() == 3) {
+					int paper_id = stoi(Parsed_content[0]);
+					node_names[paper_id] = Parsed_content[1];
+				}
+			}
+			count++;
+		}
+		myfile.close(); //close the file
+	}
+	else
+	{
+		std::cout << "Unable to open file " << file_name << endl << "Please check the file location or file name." << endl; // throw an error message
+		getchar(); // keep the console window
+		exit(1); // end the program
+	}
+
+
+}
+
+void read_node_names_movie(std::unordered_map<int, string>& node_names) {
+
+	string file_name = "MovieLens_25M//MovieLens_25M_movie_info.txt";
+	string line_content;
+	ifstream myfile(file_name); // open the file
+	if (myfile.is_open()) // if the file is opened successfully
+	{
+		int count = 0;
+		while (getline(myfile, line_content)) // read file line by line
+		{
+			if (count > 0) {
+				std::vector<string> Parsed_content = parse_string(line_content, ":::"); // parse line_content
+				int movie_id = stoi(Parsed_content[0]);
+				node_names[movie_id] = Parsed_content[1];
+			}
+			count++;
+		}
+		myfile.close(); //close the file
+	}
+	else
+	{
+		std::cout << "Unable to open file " << file_name << endl << "Please check the file location or file name." << endl; // throw an error message
+		getchar(); // keep the console window
+		exit(1); // end the program
+	}
+}
+#pragma endregion read_node_names
+
 /*produce_small_graphs_for_experiments*/
 
 #pragma region
@@ -1498,7 +1884,7 @@ void produce_small_graphs_for_experiments_element(string data_name, string save_
 
 		/*make old_read_graph and old_read_group_graph smaller*/
 
-		unordered_set<int> selected_vertices = graph_hash_of_mixed_weighted_breadth_first_search_a_fixed_number_of_vertices_in_unconnected_graphs_start_from_maxcpn(old_read_graph, V);
+		unordered_set<int> selected_vertices = graph_hash_of_mixed_weighted_random_walk_a_fixed_number_of_vertices_in_unconnected_graphs_start_from_maxcpn(old_read_graph, V);
 		old_read_graph = graph_hash_of_mixed_weighted_extract_subgraph_for_a_hash_of_vertices(old_read_graph, selected_vertices);
 
 		std::unordered_set<int> small_read_graph_group_vertices;
@@ -1560,25 +1946,14 @@ void produce_binary_graph_files_for_experiments() {
 	ThreadPool pool(pool_size); // use pool_size threads
 	std::vector< std::future<int> > results;
 
-	//string data_name = "dblp";
-	//int V = 2497782;
-	//bool one_edge_weight = false;
-	//results.emplace_back(pool.enqueue([data_name, V, one_edge_weight] {
-	//	produce_small_graphs_for_experiments_element(data_name, data_name + "_read_graph_" + to_string(V) + ".bin", data_name + "_read_group_graph_" + to_string(V) + ".bin", V, one_edge_weight);
-	//	return 1; }));
-
 	/* Jacard distance */
 	if (1) {
 		bool one_edge_weight = false;
 
 		/*amazon*/
-		if (0) {
+		if (1) {
 			string data_name = "amazon";
 			int V = 188552;
-			results.emplace_back(pool.enqueue([data_name, V, one_edge_weight] {
-				produce_small_graphs_for_experiments_element(data_name, data_name + "_read_graph_" + to_string(V) + ".bin", data_name + "_read_group_graph_" + to_string(V) + ".bin", V, one_edge_weight);
-				return 1; }));
-			V = 368552;
 			results.emplace_back(pool.enqueue([data_name, V, one_edge_weight] {
 				produce_small_graphs_for_experiments_element(data_name, data_name + "_read_graph_" + to_string(V) + ".bin", data_name + "_read_group_graph_" + to_string(V) + ".bin", V, one_edge_weight);
 				return 1; }));
@@ -1604,15 +1979,7 @@ void produce_binary_graph_files_for_experiments() {
 		/*movie*/
 		if (0) {
 			string data_name = "movie";
-			int V = 22423;
-			results.emplace_back(pool.enqueue([data_name, V, one_edge_weight] {
-				produce_small_graphs_for_experiments_element(data_name, data_name + "_read_graph_" + to_string(V) + ".bin", data_name + "_read_group_graph_" + to_string(V) + ".bin", V, one_edge_weight);
-				return 1; }));
-			V = 42423;
-			results.emplace_back(pool.enqueue([data_name, V, one_edge_weight] {
-				produce_small_graphs_for_experiments_element(data_name, data_name + "_read_graph_" + to_string(V) + ".bin", data_name + "_read_group_graph_" + to_string(V) + ".bin", V, one_edge_weight);
-				return 1; }));
-			V = 62423;
+			int V = 62423;
 			results.emplace_back(pool.enqueue([data_name, V, one_edge_weight] {
 				produce_small_graphs_for_experiments_element(data_name, data_name + "_read_graph_" + to_string(V) + ".bin", data_name + "_read_group_graph_" + to_string(V) + ".bin", V, one_edge_weight);
 				return 1; }));
@@ -1624,13 +1991,9 @@ void produce_binary_graph_files_for_experiments() {
 		bool one_edge_weight = true;
 
 		/*amazon*/
-		if (0) {
+		if (1) {
 			string data_name = "amazon";
 			int V = 188552;
-			results.emplace_back(pool.enqueue([data_name, V, one_edge_weight] {
-				produce_small_graphs_for_experiments_element(data_name, data_name + "_read_graph_one_edge_weight_" + to_string(V) + ".bin", data_name + "_read_group_graph_one_edge_weight_" + to_string(V) + ".bin", V, one_edge_weight);
-				return 1; }));
-			V = 368552;
 			results.emplace_back(pool.enqueue([data_name, V, one_edge_weight] {
 				produce_small_graphs_for_experiments_element(data_name, data_name + "_read_graph_one_edge_weight_" + to_string(V) + ".bin", data_name + "_read_group_graph_one_edge_weight_" + to_string(V) + ".bin", V, one_edge_weight);
 				return 1; }));
@@ -1656,15 +2019,7 @@ void produce_binary_graph_files_for_experiments() {
 		/*movie*/
 		if (0) {
 			string data_name = "movie";
-			int V = 22423;
-			results.emplace_back(pool.enqueue([data_name, V, one_edge_weight] {
-				produce_small_graphs_for_experiments_element(data_name, data_name + "_read_graph_one_edge_weight_" + to_string(V) + ".bin", data_name + "_read_group_graph_one_edge_weight_" + to_string(V) + ".bin", V, one_edge_weight);
-				return 1; }));
-			V = 42423;
-			results.emplace_back(pool.enqueue([data_name, V, one_edge_weight] {
-				produce_small_graphs_for_experiments_element(data_name, data_name + "_read_graph_one_edge_weight_" + to_string(V) + ".bin", data_name + "_read_group_graph_one_edge_weight_" + to_string(V) + ".bin", V, one_edge_weight);
-				return 1; }));
-			V = 62423;
+			int V = 62423;
 			results.emplace_back(pool.enqueue([data_name, V, one_edge_weight] {
 				produce_small_graphs_for_experiments_element(data_name, data_name + "_read_graph_one_edge_weight_" + to_string(V) + ".bin", data_name + "_read_group_graph_one_edge_weight_" + to_string(V) + ".bin", V, one_edge_weight);
 				return 1; }));
@@ -1677,6 +2032,7 @@ void produce_binary_graph_files_for_experiments() {
 
 
 /*global PLL data*/
+
 int global_dblp_2497782_PLL_indexes_loaded = 0, global_dblp_1248891_PLL_indexes_loaded = 0, global_dblp_848891_PLL_indexes_loaded = 0, global_dblp_448891_PLL_indexes_loaded = 0,
 global_movie_PLL_indexes_loaded = 0, global_amazon_PLL_indexes_loaded = 0,
 global_dblp_one_edge_weight_2497782_PLL_indexes_loaded = 0, global_dblp_one_edge_weight_1697782_PLL_indexes_loaded = 0, global_dblp_one_edge_weight_897782_PLL_indexes_loaded = 0,
@@ -1771,6 +2127,7 @@ void clear_global_graphs(string type) {
 #pragma endregion load_global_graphs
 
 /*generate PLL labels for experiments*/
+
 #pragma region
 void generate_binary_PLL_indexes_element(string data_name, int V, bool one_edge_weight, int pool_size_for_PLL_code) {
 
@@ -1782,7 +2139,7 @@ void generate_binary_PLL_indexes_element(string data_name, int V, bool one_edge_
 	}
 	else {
 		graph_file_name = binary_file_root_path + "//" + data_name + "_read_graph_" + to_string(V) + ".bin";
-		save_PLL_file_name = "PLL_binary_" + data_name + "_" + to_string(V) + ".txt";	
+		save_PLL_file_name = "PLL_binary_" + data_name + "_" + to_string(V) + ".txt";
 	}
 	read_graph = graph_hash_of_mixed_weighted_binary_read(graph_file_name);
 	PLL_generate_and_save_indexes_multiple_threads(read_graph, save_PLL_file_name, max_N_for_exp, !one_edge_weight, pool_size_for_PLL_code);
@@ -1791,7 +2148,7 @@ void generate_binary_PLL_indexes_element(string data_name, int V, bool one_edge_
 	vector<vector<PLL_sorted_label>> L = PLL_read_indexes_vectorFORMAT_binary(save_PLL_file_name);
 	int iteration_source_times = 10, iteration_terminal_times = 100;
 
-	boost::random::uniform_int_distribution<> dist{ static_cast<int>(0), static_cast<int>(read_graph.hash_of_vectors.size() -1) };
+	boost::random::uniform_int_distribution<> dist{ static_cast<int>(0), static_cast<int>(read_graph.hash_of_vectors.size() - 1) };
 
 	/*the following code cannot be replaced with check_correctness_of_PLL_labels, since some vertices smaller than V-1 is not in the graph*/
 	for (int yy = 0; yy < iteration_source_times; yy++) {
@@ -1896,12 +2253,12 @@ void generate_binary_PLL_indexes() {
 		bool one_edge_weight = false;
 
 		/*amazon*/
-		if (0) {
+		if (1) {
 			string data_name = "amazon";
 			int V = 188552;
 			generate_binary_PLL_indexes_element(data_name, V, one_edge_weight, pool_size_for_PLL_code);
-			V = 548552;
-			generate_binary_PLL_indexes_element(data_name, V, one_edge_weight, pool_size_for_PLL_code);
+			//V = 548552;
+			//generate_binary_PLL_indexes_element(data_name, V, one_edge_weight, pool_size_for_PLL_code);
 		}
 
 		/*movie*/
@@ -1916,8 +2273,8 @@ void generate_binary_PLL_indexes() {
 			string data_name = "dblp";
 			int V = 448891;
 			generate_binary_PLL_indexes_element(data_name, V, one_edge_weight, pool_size_for_PLL_code);
-			V = 2497782;
-			generate_binary_PLL_indexes_element(data_name, V, one_edge_weight, pool_size_for_PLL_code);
+			//V = 2497782;
+			//generate_binary_PLL_indexes_element(data_name, V, one_edge_weight, pool_size_for_PLL_code);
 		}
 	}
 
@@ -1927,12 +2284,12 @@ void generate_binary_PLL_indexes() {
 		bool one_edge_weight = true;
 
 		/*amazon*/
-		if (0) {
+		if (1) {
 			string data_name = "amazon";
 			int V = 188552;
 			generate_binary_PLL_indexes_element(data_name, V, one_edge_weight, pool_size_for_PLL_code);
-			V = 548552;
-			generate_binary_PLL_indexes_element(data_name, V, one_edge_weight, pool_size_for_PLL_code);
+			//V = 548552;
+			//generate_binary_PLL_indexes_element(data_name, V, one_edge_weight, pool_size_for_PLL_code);
 		}
 
 		/*movie*/
@@ -1947,8 +2304,8 @@ void generate_binary_PLL_indexes() {
 			string data_name = "dblp";
 			int V = 897782;
 			generate_binary_PLL_indexes_element(data_name, V, one_edge_weight, pool_size_for_PLL_code);
-			V = 2497782;
-			generate_binary_PLL_indexes_element(data_name, V, one_edge_weight, pool_size_for_PLL_code);
+			//V = 2497782;
+			//generate_binary_PLL_indexes_element(data_name, V, one_edge_weight, pool_size_for_PLL_code);
 		}
 	}
 
@@ -2082,53 +2439,53 @@ void clear_global_PLL_indexes(string load_name, bool one_edge_weight) {
 	if (one_edge_weight) {
 		if (load_name == "amazon") {
 			global_amazon_one_edge_weight_PLL_indexes_loaded = 0;
-			global_amazon_one_edge_weight_188552_PLL_indexes.clear();
-			global_amazon_one_edge_weight_368552_PLL_indexes.clear();
-			global_amazon_one_edge_weight_548552_PLL_indexes.clear();
+			vector<vector<PLL_sorted_label>>().swap(global_amazon_one_edge_weight_188552_PLL_indexes);
+			vector<vector<PLL_sorted_label>>().swap(global_amazon_one_edge_weight_368552_PLL_indexes);
+			vector<vector<PLL_sorted_label>>().swap(global_amazon_one_edge_weight_548552_PLL_indexes);
 		}
 		else if (load_name == "dblp_897782") {
 			global_dblp_one_edge_weight_897782_PLL_indexes_loaded = 0;
-			global_dblp_one_edge_weight_897782_PLL_indexes.clear();
+			vector<vector<PLL_sorted_label>>().swap(global_dblp_one_edge_weight_897782_PLL_indexes);
 		}
 		else if (load_name == "dblp_1697782") {
 			global_dblp_one_edge_weight_1697782_PLL_indexes_loaded = 0;
-			global_dblp_one_edge_weight_1697782_PLL_indexes.clear();
+			vector<vector<PLL_sorted_label>>().swap(global_dblp_one_edge_weight_1697782_PLL_indexes);
 		}
 		else if (load_name == "dblp_2497782") {
 			global_dblp_one_edge_weight_2497782_PLL_indexes_loaded = 0;
-			global_dblp_one_edge_weight_2497782_PLL_indexes.clear();
+			vector<vector<PLL_sorted_label>>().swap(global_dblp_one_edge_weight_2497782_PLL_indexes);
 		}
 		else if (load_name == "movie") {
 			global_movie_one_edge_weight_PLL_indexes_loaded = 0;
-			global_movie_one_edge_weight_22423_PLL_indexes.clear();
-			global_movie_one_edge_weight_42423_PLL_indexes.clear();
-			global_movie_one_edge_weight_62423_PLL_indexes.clear();
+			vector<vector<PLL_sorted_label>>().swap(global_movie_one_edge_weight_22423_PLL_indexes);
+			vector<vector<PLL_sorted_label>>().swap(global_movie_one_edge_weight_42423_PLL_indexes);
+			vector<vector<PLL_sorted_label>>().swap(global_movie_one_edge_weight_62423_PLL_indexes);
 		}
 	}
 	else {
 		if (load_name == "amazon") {
 			global_amazon_PLL_indexes_loaded = 0;
-			global_amazon_188552_PLL_indexes.clear();
-			global_amazon_368552_PLL_indexes.clear();
-			global_amazon_548552_PLL_indexes.clear();
+			vector<vector<PLL_sorted_label>>().swap(global_amazon_188552_PLL_indexes);
+			vector<vector<PLL_sorted_label>>().swap(global_amazon_368552_PLL_indexes);
+			vector<vector<PLL_sorted_label>>().swap(global_amazon_548552_PLL_indexes);
 		}
 		else if (load_name == "dblp_448891") {
 			global_dblp_448891_PLL_indexes_loaded = 0;
-			global_dblp_448891_PLL_indexes.clear();
+			vector<vector<PLL_sorted_label>>().swap(global_dblp_448891_PLL_indexes);
 		}
 		else if (load_name == "dblp_848891") {
 			global_dblp_848891_PLL_indexes_loaded = 0;
-			global_dblp_848891_PLL_indexes.clear();
+			vector<vector<PLL_sorted_label>>().swap(global_dblp_848891_PLL_indexes);
 		}
 		else if (load_name == "dblp_1248891") {
 			global_dblp_1248891_PLL_indexes_loaded = 0;
-			global_dblp_1248891_PLL_indexes.clear();
+			vector<vector<PLL_sorted_label>>().swap(global_dblp_1248891_PLL_indexes);
 		}
 		else if (load_name == "movie") {
 			global_movie_PLL_indexes_loaded = 0;
-			global_movie_22423_PLL_indexes.clear();
-			global_movie_42423_PLL_indexes.clear();
-			global_movie_62423_PLL_indexes.clear();
+			vector<vector<PLL_sorted_label>>().swap(global_movie_22423_PLL_indexes);
+			vector<vector<PLL_sorted_label>>().swap(global_movie_42423_PLL_indexes);
+			vector<vector<PLL_sorted_label>>().swap(global_movie_62423_PLL_indexes);
 		}
 	}
 }
@@ -2137,8 +2494,9 @@ void clear_global_PLL_indexes(string load_name, bool one_edge_weight) {
 /*experiments code*/
 
 #pragma region
-std::unordered_set<int> randomly_sample_feasible_group_vertices(string save_name,
-	vector<vector<int>>& cpn, graph_hash_of_mixed_weighted& group_graph, std::unordered_set<int>& all_group_vertices, int T, double b) {
+//string sampling_method = "random";  // "close_g" or "random"
+
+std::unordered_set<int> sampling_feasible_group_vertices(string save_name, vector<vector<int>>& cpn, graph_hash_of_mixed_weighted& group_graph, std::unordered_set<int>& all_group_vertices, int T, double b, string sampling_method) {
 
 	/* all sampled_group_vertices should be satisfically coverred by max_cpn */
 
@@ -2150,6 +2508,10 @@ std::unordered_set<int> randomly_sample_feasible_group_vertices(string save_name
 			max_cpn_id = id;
 		}
 	}
+
+	//cout << "cpn.size():" << cpn.size() << endl;
+	//cout << "max_cpn_id:" << max_cpn_id << endl;
+
 	auto pointer_max_cpn_begin = cpn[max_cpn_id].begin(), pointer_max_cpn_end = cpn[max_cpn_id].end();
 
 	/*find feasible_group_vertices_in_max_cpn*/
@@ -2185,23 +2547,79 @@ std::unordered_set<int> randomly_sample_feasible_group_vertices(string save_name
 		}
 	}
 
-	/*randomly sample*/
+
 	std::unordered_set<int> sampled_group_vertices;
 	if (T > feasible_group_vertices_in_max_cpn.size()) {
 		cout << save_name + " Warning: T > feasible_group_vertices_in_max_cpn.size()" << endl;
+		return sampled_group_vertices;
 	}
-	else {
+	if (sampling_method == "close_g") {
+
+		std::unordered_set<int> feasible_g;
+		for (int i = feasible_group_vertices_in_max_cpn.size() - 1; i >= 0; i--) {
+			feasible_g.insert(feasible_group_vertices_in_max_cpn[i]);
+		}
+
+		/*bfs search in group_graph*/
+		std::unordered_set<int> searched_g, searched_vg;
+		boost::random::uniform_int_distribution<> dist{ 0, int(feasible_group_vertices_in_max_cpn.size() - 1) };
+		int ID = dist(boost_random_time_seed);
+		int depth_min = 0;
+		std::queue<pair<int, int>> Q; // v, depth
+		Q.push({ feasible_group_vertices_in_max_cpn[ID] , 0 }); // feasible_group_vertices_in_max_cpn[ID] is a root vertex;
+		searched_vg.insert(feasible_group_vertices_in_max_cpn[ID]);
+		while (Q.size() > 0) {
+			pair<int, int> v_and_depth = Q.front();
+			if (v_and_depth.second > depth_min) {
+				if (searched_g.size() >= T) {
+					break;   //  searched all vertices with the depth of depth_min, and there are enough g
+				}
+				depth_min++;
+			}
+			if (feasible_g.count(v_and_depth.first) > 0) {
+				searched_g.insert(v_and_depth.first);
+			}
+			Q.pop(); //Removing that vertex from queue,whose neighbour will be visited now
+			/*processing all the neighbours of v*/
+			std::vector<int> adjv = group_graph.adj_v(v_and_depth.first);
+			for (auto it = adjv.begin(); it != adjv.end(); it++) {
+				if (searched_vg.count(*it) == 0) { // vertex has not been discovered
+					Q.push({ *it , v_and_depth.second + 1 });
+					searched_vg.insert(*it);
+				}
+			}
+		}
+		if (T > searched_g.size()) {
+			cout << save_name + " Warning: T > searched_g.size()" << endl;
+			return sampled_group_vertices;
+		}
+		/*randomly sample*/
+		vector<int> searched_g_v;
+		for (auto it = searched_g.begin(); it != searched_g.end(); it++) {
+			searched_g_v.push_back(*it);
+		}
+		sampled_group_vertices.insert(feasible_group_vertices_in_max_cpn[ID]); // the root PoI is inserted
+		while (sampled_group_vertices.size() < T) {
+			boost::random::uniform_int_distribution<> dist{ 0, int(searched_g_v.size() - 1) };
+			int ID2 = dist(boost_random_time_seed);
+			sampled_group_vertices.insert(searched_g_v[ID2]);
+			searched_g_v.erase(searched_g_v.begin() + ID2);
+		}
+		return sampled_group_vertices;
+	}
+	else { // random
+		/*randomly sample*/
 		while (sampled_group_vertices.size() < T) {
 			boost::random::uniform_int_distribution<> dist{ 0, int(feasible_group_vertices_in_max_cpn.size() - 1) };
 			int ID = dist(boost_random_time_seed);
 			sampled_group_vertices.insert(feasible_group_vertices_in_max_cpn[ID]);
 			feasible_group_vertices_in_max_cpn.erase(feasible_group_vertices_in_max_cpn.begin() + ID);
 		}
+		return sampled_group_vertices;
 	}
-	return sampled_group_vertices;
 
 }
-#pragma endregion randomly_sample_feasible_group_vertices
+#pragma endregion sampling_feasible_group_vertices
 
 #pragma region
 graph_hash_of_mixed_weighted produce_small_group_graph(std::unordered_set<int>& queried_group_vertices, graph_hash_of_mixed_weighted& subgraph_g, graph_hash_of_mixed_weighted& group_graph) {
@@ -2234,7 +2652,7 @@ graph_hash_of_mixed_weighted produce_small_group_graph(std::unordered_set<int>& 
 #pragma endregion produce_small_group_graph
 
 #pragma region
-void load_graphs(graph_hash_of_mixed_weighted*& old_read_graph, graph_hash_of_mixed_weighted& old_read_group_graph, 
+void load_graphs(graph_hash_of_mixed_weighted*& old_read_graph, graph_hash_of_mixed_weighted& old_read_group_graph,
 	string data_name, int V, bool& generate_new_small_graphs_and_PLL, bool one_edge_weight) {
 
 	if (one_edge_weight) {
@@ -2267,7 +2685,7 @@ void load_graphs(graph_hash_of_mixed_weighted*& old_read_graph, graph_hash_of_mi
 		else if (data_name == "amazon") {
 			if (V == 548552) {
 				old_read_graph = &global_amazon_full_graph_1ec;
-				old_read_group_graph = graph_hash_of_mixed_weighted_binary_read("PLL//amazon_read_group_graph_one_edge_weight_548552.bin");
+				old_read_group_graph = graph_hash_of_mixed_weighted_binary_read(binary_file_root_path + "//amazon_read_group_graph_one_edge_weight_548552.bin");
 			}
 			else if (V == 188552) {
 				old_read_graph = &global_amazon_small_graph_1ec;
@@ -2333,14 +2751,17 @@ void call_algorithms(graph_v_of_v_idealID& input_graph, graph_v_of_v_idealID& in
 	vector<vector<PLL_sorted_label>>& PLL_indexes, double b, double tau,
 	bool use_ENSteiner, bool use_PrunedDPPP, bool use_ImprovAPP, bool use_DUAL, bool use_GRETREE, bool use_GREPATH, bool use_DPBF,
 	double& time_ENSteiner, double& time_PrunedDPPP, double& time_ImprovAPP, double& time_DUAL, double& time_GRETREE, double& time_GREPATH, double& time_DPBF,
-	double& time_ENSteiner_P, double& time_PrunedDPPP_P, double& time_ImprovAPP_P, double& time_DUAL_P, double& time_GRETREE_P, double& time_GREPATH_P, double& time_DPBF_P,
+	double& RAM_ENSteiner, double& RAM_ImprovAPP, double& RAM_PrunedDPPP, double& RAM_DPBF, double& RAM_DUAL, double& RAM_GRETREE, double& RAM_GREPATH,
 	double& final_cost_ENSteiner, double& final_cost_PrunedDPPP, double& final_cost_ImprovAPP, double& final_cost_DUAL, double& final_cost_GRETREE, double& final_cost_GREPATH, double& final_cost_DPBF,
-	double& final_cost_ENSteiner_P, double& final_cost_PrunedDPPP_P, double& final_cost_ImprovAPP_P, double& final_cost_DUAL_P, double& final_cost_GRETREE_P, double& final_cost_GREPATH_P, double& final_cost_DPBF_P) {
+	double& final_cost_ENSteiner_P, double& final_cost_PrunedDPPP_P, double& final_cost_ImprovAPP_P, double& final_cost_DUAL_P, double& final_cost_GRETREE_P, double& final_cost_GREPATH_P, double& final_cost_DPBF_P, int heap_type,
+	bool use_DUAL_ImprovAPP, bool use_GRETREE_ImprovAPP, double& final_cost_DUAL_ImprovAPP, double& time_DUAL_ImprovAPP, double& final_cost_GRETREE_ImprovAPP, double& time_GRETREE_ImprovAPP, int k_SOTA, double& PrunedDPPP_LB_final) {
 
+	double x = 0;
 	if (use_ENSteiner) {
 		auto begin = std::chrono::high_resolution_clock::now();
-		graph_hash_of_mixed_weighted solu = ENSteiner(input_graph, input_group_graph, compulsory_group_vertices);
-		solu = make_solutree_feasible(input_graph, input_group_graph, compulsory_group_vertices, solu, b, PLL_indexes, graph_id_2_PLL_id, PLL_id_2_graph_id);
+
+		graph_hash_of_mixed_weighted solu = iterative_SOTA(input_graph, input_group_graph, compulsory_group_vertices, b, tau, "ENSteiner", RAM_ENSteiner, k_SOTA, PLL_indexes, graph_id_2_PLL_id, PLL_id_2_graph_id, x);
+
 		auto end = std::chrono::high_resolution_clock::now();
 		double runningtime = std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count() / 1e9; // s
 		time_ENSteiner = time_ENSteiner + (double)runningtime;
@@ -2348,21 +2769,25 @@ void call_algorithms(graph_v_of_v_idealID& input_graph, graph_v_of_v_idealID& in
 		if (final_cost_ENSteiner > cost) {
 			final_cost_ENSteiner = cost;
 		}
-		auto begin2 = std::chrono::high_resolution_clock::now();
-		remove_redundent_leaves_graph_v_of_v_idealID(solu, input_group_graph, compulsory_group_vertices, b);
-		auto end2 = std::chrono::high_resolution_clock::now();
-		double runningtime2 = std::chrono::duration_cast<std::chrono::nanoseconds>(end2 - begin2).count() / 1e9; // s
-		time_ENSteiner_P = time_ENSteiner_P + (double)runningtime2;
-		cost = graph_hash_of_mixed_weighted_sum_of_ec(solu);
-		if (final_cost_ENSteiner_P > cost) {
-			final_cost_ENSteiner_P = cost;
-		}
+		//auto begin2 = std::chrono::high_resolution_clock::now();
+		//remove_redundent_leaves_graph_v_of_v_idealID(solu, input_group_graph, compulsory_group_vertices, b);
+		//auto end2 = std::chrono::high_resolution_clock::now();
+		//double runningtime2 = std::chrono::duration_cast<std::chrono::nanoseconds>(end2 - begin2).count() / 1e9; // s
+		//time_ENSteiner_P = time_ENSteiner_P + (double)runningtime2;
+		//cost = graph_hash_of_mixed_weighted_sum_of_ec(solu);
+		//if (final_cost_ENSteiner_P > cost) {
+		//	final_cost_ENSteiner_P = cost;
+		//}
 	}
 
 	if (use_DPBF) {
 		auto begin = std::chrono::high_resolution_clock::now();
-		graph_hash_of_mixed_weighted solu = graph_v_of_v_idealID_DPBF_only_ec(input_graph, input_group_graph, compulsory_group_vertices);
-		solu = make_solutree_feasible(input_graph, input_group_graph, compulsory_group_vertices, solu, b, PLL_indexes, graph_id_2_PLL_id, PLL_id_2_graph_id);
+
+		//graph_hash_of_mixed_weighted solu = graph_v_of_v_idealID_DPBF_only_ec(input_graph, input_group_graph, compulsory_group_vertices);
+		//solu = make_solutree_feasible(input_graph, input_group_graph, compulsory_group_vertices, solu, b, PLL_indexes, graph_id_2_PLL_id, PLL_id_2_graph_id);
+
+		graph_hash_of_mixed_weighted solu = iterative_SOTA(input_graph, input_group_graph, compulsory_group_vertices, b, tau, "DPBF", RAM_DPBF, k_SOTA, PLL_indexes, graph_id_2_PLL_id, PLL_id_2_graph_id, x);
+
 		auto end = std::chrono::high_resolution_clock::now();
 		double runningtime = std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count() / 1e9; // s
 		time_DPBF = time_DPBF + (double)runningtime;
@@ -2370,43 +2795,52 @@ void call_algorithms(graph_v_of_v_idealID& input_graph, graph_v_of_v_idealID& in
 		if (final_cost_DPBF > cost) {
 			final_cost_DPBF = cost;
 		}
-		auto begin2 = std::chrono::high_resolution_clock::now();
-		remove_redundent_leaves_graph_v_of_v_idealID(solu, input_group_graph, compulsory_group_vertices, b);
-		auto end2 = std::chrono::high_resolution_clock::now();
-		double runningtime2 = std::chrono::duration_cast<std::chrono::nanoseconds>(end2 - begin2).count() / 1e9; // s
-		time_DPBF_P = time_DPBF_P + (double)runningtime2;
-		cost = graph_hash_of_mixed_weighted_sum_of_ec(solu);
-		if (final_cost_DPBF_P > cost) {
-			final_cost_DPBF_P = cost;
-		}
+		//auto begin2 = std::chrono::high_resolution_clock::now();
+		//remove_redundent_leaves_graph_v_of_v_idealID(solu, input_group_graph, compulsory_group_vertices, b);
+		//auto end2 = std::chrono::high_resolution_clock::now();
+		//double runningtime2 = std::chrono::duration_cast<std::chrono::nanoseconds>(end2 - begin2).count() / 1e9; // s
+		//time_DPBF_P = time_DPBF_P + (double)runningtime2;
+		//cost = graph_hash_of_mixed_weighted_sum_of_ec(solu);
+		//if (final_cost_DPBF_P > cost) {
+		//	final_cost_DPBF_P = cost;
+		//}
 	}
 
 	if (use_PrunedDPPP) {
 		auto begin = std::chrono::high_resolution_clock::now();
-		graph_hash_of_mixed_weighted solu = graph_v_of_v_idealID_PrunedDPPlusPlus(input_graph, input_group_graph, compulsory_group_vertices, tau);
-		solu = make_solutree_feasible(input_graph, input_group_graph, compulsory_group_vertices, solu, b, PLL_indexes, graph_id_2_PLL_id, PLL_id_2_graph_id);
+
+		//graph_hash_of_mixed_weighted solu = graph_v_of_v_idealID_PrunedDPPlusPlus(input_graph, input_group_graph, compulsory_group_vertices, tau);
+		//solu = make_solutree_feasible(input_graph, input_group_graph, compulsory_group_vertices, solu, b, PLL_indexes, graph_id_2_PLL_id, PLL_id_2_graph_id);
+
+		graph_hash_of_mixed_weighted solu = iterative_SOTA(input_graph, input_group_graph, compulsory_group_vertices, b, tau, "PrunedDPPP", RAM_PrunedDPPP, k_SOTA, PLL_indexes, graph_id_2_PLL_id, PLL_id_2_graph_id, x);
+
 		auto end = std::chrono::high_resolution_clock::now();
 		double runningtime = std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count() / 1e9; // s
 		time_PrunedDPPP = time_PrunedDPPP + (double)runningtime;
 		double cost = graph_hash_of_mixed_weighted_sum_of_ec(solu);
 		if (final_cost_PrunedDPPP > cost) {
 			final_cost_PrunedDPPP = cost;
+			PrunedDPPP_LB_final = x;
 		}
-		auto begin2 = std::chrono::high_resolution_clock::now();
-		remove_redundent_leaves_graph_v_of_v_idealID(solu, input_group_graph, compulsory_group_vertices, b);
-		auto end2 = std::chrono::high_resolution_clock::now();
-		double runningtime2 = std::chrono::duration_cast<std::chrono::nanoseconds>(end2 - begin2).count() / 1e9; // s
-		time_PrunedDPPP_P = time_PrunedDPPP_P + (double)runningtime2;
-		cost = graph_hash_of_mixed_weighted_sum_of_ec(solu);
-		if (final_cost_PrunedDPPP_P > cost) {
-			final_cost_PrunedDPPP_P = cost;
-		}
+		//auto begin2 = std::chrono::high_resolution_clock::now();
+		//remove_redundent_leaves_graph_v_of_v_idealID(solu, input_group_graph, compulsory_group_vertices, b);
+		//auto end2 = std::chrono::high_resolution_clock::now();
+		//double runningtime2 = std::chrono::duration_cast<std::chrono::nanoseconds>(end2 - begin2).count() / 1e9; // s
+		//time_PrunedDPPP_P = time_PrunedDPPP_P + (double)runningtime2;
+		//cost = graph_hash_of_mixed_weighted_sum_of_ec(solu);
+		//if (final_cost_PrunedDPPP_P > cost) {
+		//	final_cost_PrunedDPPP_P = cost;
+		//}
 	}
 
 	if (use_ImprovAPP) {
 		auto begin = std::chrono::high_resolution_clock::now();
-		graph_hash_of_mixed_weighted solu = ImprovAPP_onlyec(input_graph, input_group_graph, compulsory_group_vertices);
-		solu = make_solutree_feasible(input_graph, input_group_graph, compulsory_group_vertices, solu, b, PLL_indexes, graph_id_2_PLL_id, PLL_id_2_graph_id);
+
+		//graph_hash_of_mixed_weighted solu = ImprovAPP_onlyec(input_graph, input_group_graph, compulsory_group_vertices);
+		//solu = make_solutree_feasible(input_graph, input_group_graph, compulsory_group_vertices, solu, b, PLL_indexes, graph_id_2_PLL_id, PLL_id_2_graph_id);
+
+		graph_hash_of_mixed_weighted solu = iterative_SOTA(input_graph, input_group_graph, compulsory_group_vertices, b, tau, "ImprovAPP", RAM_ImprovAPP, k_SOTA, PLL_indexes, graph_id_2_PLL_id, PLL_id_2_graph_id, x);
+
 		auto end = std::chrono::high_resolution_clock::now();
 		double runningtime = std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count() / 1e9; // s
 		time_ImprovAPP = time_ImprovAPP + (double)runningtime;
@@ -2414,20 +2848,20 @@ void call_algorithms(graph_v_of_v_idealID& input_graph, graph_v_of_v_idealID& in
 		if (final_cost_ImprovAPP > cost) {
 			final_cost_ImprovAPP = cost;
 		}
-		auto begin2 = std::chrono::high_resolution_clock::now();
-		remove_redundent_leaves_graph_v_of_v_idealID(solu, input_group_graph, compulsory_group_vertices, b);
-		auto end2 = std::chrono::high_resolution_clock::now();
-		double runningtime2 = std::chrono::duration_cast<std::chrono::nanoseconds>(end2 - begin2).count() / 1e9; // s
-		time_ImprovAPP_P = time_ImprovAPP_P + (double)runningtime2;
-		cost = graph_hash_of_mixed_weighted_sum_of_ec(solu);
-		if (final_cost_ImprovAPP_P > cost) {
-			final_cost_ImprovAPP_P = cost;
-		}
+		//auto begin2 = std::chrono::high_resolution_clock::now();
+		//remove_redundent_leaves_graph_v_of_v_idealID(solu, input_group_graph, compulsory_group_vertices, b);
+		//auto end2 = std::chrono::high_resolution_clock::now();
+		//double runningtime2 = std::chrono::duration_cast<std::chrono::nanoseconds>(end2 - begin2).count() / 1e9; // s
+		//time_ImprovAPP_P = time_ImprovAPP_P + (double)runningtime2;
+		//cost = graph_hash_of_mixed_weighted_sum_of_ec(solu);
+		//if (final_cost_ImprovAPP_P > cost) {
+		//	final_cost_ImprovAPP_P = cost;
+		//}
 	}
 
 	if (use_DUAL) {
 		auto begin = std::chrono::high_resolution_clock::now();
-		graph_hash_of_mixed_weighted solu = algo1_DUAL_graph_v_of_v_idealID(input_graph, input_group_graph, compulsory_group_vertices, b, tau);
+		graph_hash_of_mixed_weighted solu = algo1_DUAL_graph_v_of_v_idealID(input_graph, input_group_graph, compulsory_group_vertices, b, tau, true, RAM_DUAL);
 		auto end = std::chrono::high_resolution_clock::now();
 		double runningtime = std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count() / 1e9; // s
 		time_DUAL = time_DUAL + (double)runningtime;
@@ -2435,20 +2869,20 @@ void call_algorithms(graph_v_of_v_idealID& input_graph, graph_v_of_v_idealID& in
 		if (final_cost_DUAL > cost) {
 			final_cost_DUAL = cost;
 		}
-		auto begin2 = std::chrono::high_resolution_clock::now();
-		remove_redundent_leaves_graph_v_of_v_idealID(solu, input_group_graph, compulsory_group_vertices, b);
-		auto end2 = std::chrono::high_resolution_clock::now();
-		double runningtime2 = std::chrono::duration_cast<std::chrono::nanoseconds>(end2 - begin2).count() / 1e9; // s
-		time_DUAL_P = time_DUAL_P + (double)runningtime2;
-		cost = graph_hash_of_mixed_weighted_sum_of_ec(solu);
-		if (final_cost_DUAL_P > cost) {
-			final_cost_DUAL_P = cost;
-		}
+		//auto begin2 = std::chrono::high_resolution_clock::now();
+		//remove_redundent_leaves_graph_v_of_v_idealID(solu, input_group_graph, compulsory_group_vertices, b);
+		//auto end2 = std::chrono::high_resolution_clock::now();
+		//double runningtime2 = std::chrono::duration_cast<std::chrono::nanoseconds>(end2 - begin2).count() / 1e9; // s
+		//time_DUAL_P = time_DUAL_P + (double)runningtime2;
+		//cost = graph_hash_of_mixed_weighted_sum_of_ec(solu);
+		//if (final_cost_DUAL_P > cost) {
+		//	final_cost_DUAL_P = cost;
+		//}
 	}
 
 	if (use_GRETREE) {
 		auto begin = std::chrono::high_resolution_clock::now();
-		graph_hash_of_mixed_weighted solu = algo2_GRETREE_graph_v_of_v_idealID(input_graph, input_group_graph, compulsory_group_vertices, b, tau);
+		graph_hash_of_mixed_weighted solu = algo2_GRETREE_graph_v_of_v_idealID(input_graph, input_group_graph, compulsory_group_vertices, b, tau, true, RAM_GRETREE);
 		auto end = std::chrono::high_resolution_clock::now();
 		double runningtime = std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count() / 1e9; // s
 		time_GRETREE = time_GRETREE + (double)runningtime;
@@ -2456,20 +2890,20 @@ void call_algorithms(graph_v_of_v_idealID& input_graph, graph_v_of_v_idealID& in
 		if (final_cost_GRETREE > cost) {
 			final_cost_GRETREE = cost;
 		}
-		auto begin2 = std::chrono::high_resolution_clock::now();
-		remove_redundent_leaves_graph_v_of_v_idealID(solu, input_group_graph, compulsory_group_vertices, b);
-		auto end2 = std::chrono::high_resolution_clock::now();
-		double runningtime2 = std::chrono::duration_cast<std::chrono::nanoseconds>(end2 - begin2).count() / 1e9; // s
-		time_GRETREE_P = time_GRETREE_P + (double)runningtime2;
-		cost = graph_hash_of_mixed_weighted_sum_of_ec(solu);
-		if (final_cost_GRETREE_P > cost) {
-			final_cost_GRETREE_P = cost;
-		}
+		//auto begin2 = std::chrono::high_resolution_clock::now();
+		//remove_redundent_leaves_graph_v_of_v_idealID(solu, input_group_graph, compulsory_group_vertices, b);
+		//auto end2 = std::chrono::high_resolution_clock::now();
+		//double runningtime2 = std::chrono::duration_cast<std::chrono::nanoseconds>(end2 - begin2).count() / 1e9; // s
+		//time_GRETREE_P = time_GRETREE_P + (double)runningtime2;
+		//cost = graph_hash_of_mixed_weighted_sum_of_ec(solu);
+		//if (final_cost_GRETREE_P > cost) {
+		//	final_cost_GRETREE_P = cost;
+		//}
 	}
 
 	if (use_GREPATH) {
 		auto begin = std::chrono::high_resolution_clock::now();
-		graph_hash_of_mixed_weighted solu = algo3_GREPATH_graph_v_of_v_idealID(input_graph, input_group_graph, compulsory_group_vertices, b, tau, PLL_indexes, graph_id_2_PLL_id, PLL_id_2_graph_id);
+		graph_hash_of_mixed_weighted solu = algo3_GREPATH_graph_v_of_v_idealID(input_graph, input_group_graph, compulsory_group_vertices, b, PLL_indexes, graph_id_2_PLL_id, PLL_id_2_graph_id, heap_type, RAM_GREPATH);
 		auto end = std::chrono::high_resolution_clock::now();
 		double runningtime = std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count() / 1e9; // s
 		time_GREPATH = time_GREPATH + (double)runningtime;
@@ -2477,14 +2911,38 @@ void call_algorithms(graph_v_of_v_idealID& input_graph, graph_v_of_v_idealID& in
 		if (final_cost_GREPATH > cost) {
 			final_cost_GREPATH = cost;
 		}
-		auto begin2 = std::chrono::high_resolution_clock::now();
-		remove_redundent_leaves_graph_v_of_v_idealID(solu, input_group_graph, compulsory_group_vertices, b);
-		auto end2 = std::chrono::high_resolution_clock::now();
-		double runningtime2 = std::chrono::duration_cast<std::chrono::nanoseconds>(end2 - begin2).count() / 1e9; // s
-		time_GREPATH_P = time_GREPATH_P + (double)runningtime2;
-		cost = graph_hash_of_mixed_weighted_sum_of_ec(solu);
-		if (final_cost_GREPATH_P > cost) {
-			final_cost_GREPATH_P = cost;
+		//auto begin2 = std::chrono::high_resolution_clock::now();
+		//remove_redundent_leaves_graph_v_of_v_idealID(solu, input_group_graph, compulsory_group_vertices, b);
+		//auto end2 = std::chrono::high_resolution_clock::now();
+		//double runningtime2 = std::chrono::duration_cast<std::chrono::nanoseconds>(end2 - begin2).count() / 1e9; // s
+		//time_GREPATH_P = time_GREPATH_P + (double)runningtime2;
+		//cost = graph_hash_of_mixed_weighted_sum_of_ec(solu);
+		//if (final_cost_GREPATH_P > cost) {
+		//	final_cost_GREPATH_P = cost;
+		//}
+	}
+
+	if (use_DUAL_ImprovAPP) {
+		auto begin = std::chrono::high_resolution_clock::now();
+		graph_hash_of_mixed_weighted solu = algo1_DUAL_graph_v_of_v_idealID(input_graph, input_group_graph, compulsory_group_vertices, b, tau, false, RAM_DUAL);
+		auto end = std::chrono::high_resolution_clock::now();
+		double runningtime = std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count() / 1e9; // s
+		time_DUAL_ImprovAPP = time_DUAL_ImprovAPP + (double)runningtime;
+		double cost = graph_hash_of_mixed_weighted_sum_of_ec(solu);
+		if (final_cost_DUAL_ImprovAPP > cost) {
+			final_cost_DUAL_ImprovAPP = cost;
+		}
+	}
+
+	if (use_GRETREE_ImprovAPP) {
+		auto begin = std::chrono::high_resolution_clock::now();
+		graph_hash_of_mixed_weighted solu = algo2_GRETREE_graph_v_of_v_idealID(input_graph, input_group_graph, compulsory_group_vertices, b, tau, false, RAM_GRETREE);
+		auto end = std::chrono::high_resolution_clock::now();
+		double runningtime = std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count() / 1e9; // s
+		time_GRETREE_ImprovAPP = time_GRETREE_ImprovAPP + (double)runningtime;
+		double cost = graph_hash_of_mixed_weighted_sum_of_ec(solu);
+		if (final_cost_GRETREE_ImprovAPP > cost) {
+			final_cost_GRETREE_ImprovAPP = cost;
 		}
 	}
 }
@@ -2492,7 +2950,8 @@ void call_algorithms(graph_v_of_v_idealID& input_graph, graph_v_of_v_idealID& in
 
 #pragma region
 int experiment_element(string data_name, string save_name, int V, int T, double b, double tau, double P_min, double P_max, int iteration_times,
-	bool use_ENSteiner, bool use_PrunedDPPP, bool use_ImprovAPP, bool use_DUAL, bool use_GRETREE, bool use_GREPATH, bool use_DPBF, bool one_edge_weight) {
+	bool use_ENSteiner, bool use_PrunedDPPP, bool use_ImprovAPP, bool use_DUAL, bool use_GRETREE, bool use_GREPATH, bool use_DPBF, bool one_edge_weight, int heap_type,
+	int graph_search_type, bool use_DUAL_ImprovAPP, bool use_GRETREE_ImprovAPP, int k_SOTA, string sampling_method) {
 
 	/*output*/
 	ofstream outputFile;
@@ -2503,13 +2962,14 @@ int experiment_element(string data_name, string save_name, int V, int T, double 
 	outputFile << "V,T,b,tau,P_min,P_max," <<
 		"cost_ENSteiner,time_ENSteiner,cost_PrunedDPPP,time_PrunedDPPP,cost_ImprovAPP,time_ImprovAPP," <<
 		"cost_DUAL,time_DUAL,cost_GRETREE,time_GRETREE,cost_GREPATH,time_GREPATH,cost_DPBF,time_DPBF," <<
-	"cost_ENSteiner_P,time_ENSteiner_P,cost_PrunedDPPP_P,time_PrunedDPPP_P,cost_ImprovAPP_P,time_ImprovAPP_P," <<
-		"cost_DUAL_P,time_DUAL_P,cost_GRETREE_P,time_GRETREE_P,cost_GREPATH_P,time_GREPATH_P,cost_DPBF_P,time_DPBF_P" << endl;
+		"V_in_queried_groups,RAM_ENSteiner,RAM_ImprovAPP,RAM_PrunedDPPP,RAM_DPBF,RAM_DUAL," <<
+		"RAM_GRETREE,RAM_GREPATH,k_SOTA,RAM_PLL,gmin,PrunedDPPP_LB_final,cost_DPBF_P,time_DPBF_P," <<
+		"cost_DUAL_ImprovAPP,time_DUAL_ImprovAPP,cost_GRETREE_ImprovAPP,time_GRETREE_ImprovAPP" << endl;
 
 	/*read data*/
 	graph_hash_of_mixed_weighted x;
-	graph_hash_of_mixed_weighted* old_read_graph = &x; 
-	graph_hash_of_mixed_weighted old_read_group_graph;
+	graph_hash_of_mixed_weighted* old_read_graph = &x;
+	graph_hash_of_mixed_weighted old_read_group_graph; // this cannot be pointers, since the below graph_hash_of_mixed_weighted_ec_normalization_with_range
 	bool generate_new_small_graphs_and_PLL = false;
 	load_graphs(old_read_graph, old_read_group_graph, data_name, V, generate_new_small_graphs_and_PLL, one_edge_weight);
 	graph_hash_of_mixed_weighted_ec_normalization_with_range(old_read_group_graph, P_min, P_max); // probability of v-g is weight of edge (v,g) in old_read_group_graph
@@ -2529,7 +2989,14 @@ int experiment_element(string data_name, string save_name, int V, int T, double 
 		vector<vector<PLL_sorted_label>> newly_generated_PLL_indexes; // newly_generated_PLL_indexes is used when need_to_generate_PLL_indexes=true, otherwise global indexes are used
 		if (generate_new_small_graphs_and_PLL) {
 
-			unordered_set<int> selected_vertices = graph_hash_of_mixed_weighted_breadth_first_search_a_fixed_number_of_vertices_in_unconnected_graphs_start_from_maxcpn(*old_read_graph, V);
+			unordered_set<int> selected_vertices;
+			if (graph_search_type == 0) {
+				selected_vertices = graph_hash_of_mixed_weighted_breadth_first_search_a_fixed_number_of_vertices_in_unconnected_graphs_start_from_maxcpn(*old_read_graph, V);
+			}
+			else {
+				selected_vertices = graph_hash_of_mixed_weighted_random_walk_a_fixed_number_of_vertices_in_unconnected_graphs_start_from_maxcpn(*old_read_graph, V);
+			}
+
 			graph_hash_of_mixed_weighted small_read_graph = graph_hash_of_mixed_weighted_extract_subgraph_for_a_hash_of_vertices(*old_read_graph, selected_vertices);
 
 			/*compute small_read_graph_group_vertices and sampled_group_vertices*/
@@ -2557,7 +3024,7 @@ int experiment_element(string data_name, string save_name, int V, int T, double 
 			}
 			cpn = graph_hash_of_mixed_weighted_connected_components_vector_format(small_read_graph, (*old_read_graph).hash_of_vectors.size()); // small_read_graph is needed here
 
-			sampled_group_vertices = randomly_sample_feasible_group_vertices(save_name, cpn, old_read_group_graph, small_read_graph_group_vertices, T, b);
+			sampled_group_vertices = sampling_feasible_group_vertices(save_name, cpn, old_read_group_graph, small_read_graph_group_vertices, T, b, sampling_method);
 			if (T > sampled_group_vertices.size()) {
 				times--;
 				continue;
@@ -2575,7 +3042,7 @@ int experiment_element(string data_name, string save_name, int V, int T, double 
 				}
 			}
 
-			sampled_group_vertices = randomly_sample_feasible_group_vertices(save_name, cpn, old_read_group_graph, old_group_vertices, T, b);
+			sampled_group_vertices = sampling_feasible_group_vertices(save_name, cpn, old_read_group_graph, old_group_vertices, T, b, sampling_method);
 			if (T > sampled_group_vertices.size()) {
 				times--;
 				continue;
@@ -2584,22 +3051,111 @@ int experiment_element(string data_name, string save_name, int V, int T, double 
 
 		/*solve instance in each maximal component*/
 		double time_ENSteiner = 0, time_PrunedDPPP = 0, time_ImprovAPP = 0, time_DUAL = 0, time_GREPATH = 0, time_GRETREE = 0, time_DPBF = 0,
-			time_ENSteiner_P = 0, time_PrunedDPPP_P = 0, time_ImprovAPP_P = 0, time_DUAL_P = 0, time_GREPATH_P = 0, time_GRETREE_P = 0, time_DPBF_P = 0;
+			time_ENSteiner_P = 0, time_PrunedDPPP_P = 0, time_ImprovAPP_P = 0, time_DUAL_P = 0, time_GREPATH_P = 0, time_GRETREE_P = 0, time_DPBF_P = 0,
+			time_DUAL_ImprovAPP = 0, time_GRETREE_ImprovAPP = 0;
+
+		double PrunedDPPP_LB_final = 0;
+
 
 		double final_cost_ENSteiner = INT_MAX, final_cost_PrunedDPPP = INT_MAX, final_cost_ImprovAPP = INT_MAX,
 			final_cost_DUAL = INT_MAX, final_cost_GREPATH = INT_MAX, final_cost_GRETREE = INT_MAX, final_cost_DPBF = INT_MAX,
 			final_cost_ENSteiner_P = INT_MAX, final_cost_PrunedDPPP_P = INT_MAX, final_cost_ImprovAPP_P = INT_MAX,
-			final_cost_DUAL_P = INT_MAX, final_cost_GREPATH_P = INT_MAX, final_cost_GRETREE_P = INT_MAX, final_cost_DPBF_P = INT_MAX;
+			final_cost_DUAL_P = INT_MAX, final_cost_GREPATH_P = INT_MAX, final_cost_GRETREE_P = INT_MAX, final_cost_DPBF_P = INT_MAX,
+			final_cost_DUAL_ImprovAPP = INT_MAX, final_cost_GRETREE_ImprovAPP = INT_MAX;
+
+
+		double final_RAM_ENSteiner = 0, final_RAM_ImprovAPP = 0, final_RAM_PrunedDPPP = 0, final_RAM_DPBF = 0, final_RAM_DUAL = 0, final_RAM_GRETREE = 0, final_RAM_GREPATH = 0;
 
 		int g_min_size = 0; // this g_min is the sum of all g_mins in all components
 
+		long long int vertices_in_queried_groups = 0;
+
 		vector<int> graph_id_2_PLL_id(max_N_for_exp), PLL_id_2_graph_id(max_N_for_exp);
+
+
+
+
+		/*PLL   vector<vector<PLL_sorted_label>>*/
+		auto PLL_indexes_pointer = &newly_generated_PLL_indexes;
+		if (one_edge_weight) {
+			if (data_name == "dblp") {
+				if (V == 2497782) {
+					PLL_indexes_pointer = &global_dblp_one_edge_weight_2497782_PLL_indexes;
+				}
+				else if (V == 897782) {
+					PLL_indexes_pointer = &global_dblp_one_edge_weight_897782_PLL_indexes;
+				}
+			}
+			else if (data_name == "movie") {
+				if (V == 62423) {
+					PLL_indexes_pointer = &global_movie_one_edge_weight_62423_PLL_indexes;
+				}
+			}
+			else if (data_name == "amazon") {
+				if (V == 548552) {
+					PLL_indexes_pointer = &global_amazon_one_edge_weight_548552_PLL_indexes;
+				}
+				else if (V == 188552) {
+					PLL_indexes_pointer = &global_amazon_one_edge_weight_188552_PLL_indexes;
+				}
+			}
+		}
+		else {
+			if (data_name == "dblp") {
+				if (V == 448891) {
+					PLL_indexes_pointer = &global_dblp_448891_PLL_indexes;
+				}
+				else if (V == 2497782) {
+					PLL_indexes_pointer = &global_dblp_2497782_PLL_indexes;
+				}
+			}
+			else if (data_name == "movie") {
+				if (V == 62423) {
+					PLL_indexes_pointer = &global_movie_62423_PLL_indexes;
+				}
+			}
+			else if (data_name == "amazon") {
+				if (V == 548552) {
+					PLL_indexes_pointer = &global_amazon_548552_PLL_indexes;
+				}
+				else if (V == 188552) {
+					PLL_indexes_pointer = &global_amazon_188552_PLL_indexes;
+				}
+			}
+		}
+		double PLL_label_num = 0;
+		for (auto it = PLL_indexes_pointer->begin(); it != PLL_indexes_pointer->end(); it++) {
+			PLL_label_num += it->size();
+		}
+		double RAM_PLL = PLL_label_num * sizeof(PLL_label_num) / 1024 / 1024;
+
+
+		/*gmin*/
+		int gmin_global = 0;
 
 		for (auto i = cpn.begin(); i != cpn.end(); i++) {
 
 			graph_hash_of_mixed_weighted subgraph_g = graph_hash_of_mixed_weighted_extract_subgraph(*old_read_graph, *i);
 
 			graph_hash_of_mixed_weighted subgraph_g_group_graph = produce_small_group_graph(sampled_group_vertices, subgraph_g, old_read_group_graph);
+
+
+			/*update vertices_in_queried_groups*/
+			for (auto xx1 = i->begin(); xx1 != i->end(); xx1++) {
+				if (subgraph_g_group_graph.degree(*xx1) > 0) {
+					vertices_in_queried_groups++;
+				}
+			}
+
+			/*gmin*/
+			int gmin = INT_MAX;
+			for (auto it = sampled_group_vertices.begin(); it != sampled_group_vertices.end(); it++) {
+				int degree = subgraph_g_group_graph.degree(*it);
+				if (gmin > degree) {
+					gmin = degree;
+				}
+			}
+			gmin_global += gmin;
 
 			int g_min = find_g_min(subgraph_g_group_graph, sampled_group_vertices); // find g_min
 			g_min_size = g_min_size + subgraph_g_group_graph.degree(g_min);
@@ -2628,66 +3184,25 @@ int experiment_element(string data_name, string save_name, int V, int T, double 
 				graph_v_of_v_idealID subgraph_g_group_graph_idealID = graph_hash_of_mixed_weighted_to_graph_v_of_v_idealID(subgraph_g_group_graph, vertexID_old_to_new);
 				subgraph_g.clear();
 				subgraph_g_group_graph.clear();
-				vertexID_old_to_new.clear();
+				unordered_map<int, int>().swap(vertexID_old_to_new);
 
-
-				auto PLL_indexes_pointer = &newly_generated_PLL_indexes;
-				if (one_edge_weight) {
-					if (data_name == "dblp") {
-						if (V == 2497782) {
-							PLL_indexes_pointer = &global_dblp_one_edge_weight_2497782_PLL_indexes;
-						}
-						else if (V == 897782) {
-							PLL_indexes_pointer = &global_dblp_one_edge_weight_897782_PLL_indexes;
-						}
-					}
-					else if (data_name == "movie") {
-						if (V == 62423) {
-							PLL_indexes_pointer = &global_movie_one_edge_weight_62423_PLL_indexes;
-						}
-					}
-					else if (data_name == "amazon") {
-						if (V == 548552) {
-							PLL_indexes_pointer = &global_amazon_one_edge_weight_548552_PLL_indexes;
-						}
-						else if (V == 188552) {
-							PLL_indexes_pointer = &global_amazon_one_edge_weight_188552_PLL_indexes;
-						}
-					}
-				}
-				else {
-					if (data_name == "dblp") {
-						if (V == 448891) {
-							PLL_indexes_pointer = &global_dblp_448891_PLL_indexes;
-						}
-						else if (V == 2497782) {
-							PLL_indexes_pointer = &global_dblp_2497782_PLL_indexes;
-						}
-					}
-					else if (data_name == "movie") {
-						if (V == 62423) {
-							PLL_indexes_pointer = &global_movie_62423_PLL_indexes;
-						}
-					}
-					else if (data_name == "amazon") {
-						if (V == 548552) {
-							PLL_indexes_pointer = &global_amazon_548552_PLL_indexes;
-						}
-						else if (V == 188552) {
-							PLL_indexes_pointer = &global_amazon_188552_PLL_indexes;
-						}
-					}
-				}
+				double RAM_ENSteiner = 0, RAM_ImprovAPP = 0, RAM_PrunedDPPP = 0, RAM_DPBF = 0, RAM_DUAL = 0, RAM_GRETREE = 0, RAM_GREPATH = 0;
 
 				call_algorithms(subgraph_g_idealID, subgraph_g_group_graph_idealID, sampled_group_vertices_idealID, graph_id_2_PLL_id, PLL_id_2_graph_id,
 					*PLL_indexes_pointer, b, tau, use_ENSteiner, use_PrunedDPPP, use_ImprovAPP, use_DUAL, use_GRETREE, use_GREPATH, use_DPBF,
 					time_ENSteiner, time_PrunedDPPP, time_ImprovAPP, time_DUAL, time_GRETREE, time_GREPATH, time_DPBF,
-					time_ENSteiner_P, time_PrunedDPPP_P, time_ImprovAPP_P, time_DUAL_P, time_GRETREE_P, time_GREPATH_P, time_DPBF_P,
+					RAM_ENSteiner, RAM_ImprovAPP, RAM_PrunedDPPP, RAM_DPBF, RAM_DUAL, RAM_GRETREE, RAM_GREPATH,
 					final_cost_ENSteiner, final_cost_PrunedDPPP, final_cost_ImprovAPP, final_cost_DUAL, final_cost_GRETREE, final_cost_GREPATH, final_cost_DPBF,
-					final_cost_ENSteiner_P, final_cost_PrunedDPPP_P, final_cost_ImprovAPP_P, final_cost_DUAL_P, final_cost_GRETREE_P, final_cost_GREPATH_P, final_cost_DPBF_P);
+					final_cost_ENSteiner_P, final_cost_PrunedDPPP_P, final_cost_ImprovAPP_P, final_cost_DUAL_P, final_cost_GRETREE_P, final_cost_GREPATH_P, final_cost_DPBF_P, heap_type,
+					use_DUAL_ImprovAPP, use_GRETREE_ImprovAPP, final_cost_DUAL_ImprovAPP, time_DUAL_ImprovAPP, final_cost_GRETREE_ImprovAPP, time_GRETREE_ImprovAPP, k_SOTA, PrunedDPPP_LB_final);
+
+				final_RAM_ENSteiner = final_RAM_ENSteiner + RAM_ENSteiner, final_RAM_ImprovAPP = final_RAM_ImprovAPP + RAM_ImprovAPP, final_RAM_PrunedDPPP = final_RAM_PrunedDPPP + RAM_PrunedDPPP,
+					final_RAM_DPBF = final_RAM_DPBF + RAM_DPBF, final_RAM_DUAL = final_RAM_DUAL + RAM_DUAL, final_RAM_GRETREE = final_RAM_GRETREE + RAM_GRETREE, final_RAM_GREPATH = final_RAM_GREPATH + RAM_GREPATH;
 
 			}
 		}
+
+
 
 		if (sampled_group_vertices_is_feasible == true) { // there is a feasible solution
 			outputFile << V << "," << T << "," << b
@@ -2695,9 +3210,10 @@ int experiment_element(string data_name, string save_name, int V, int T, double 
 				<< final_cost_ENSteiner << "," << time_ENSteiner << "," << final_cost_PrunedDPPP << "," << time_PrunedDPPP
 				<< "," << final_cost_ImprovAPP << "," << time_ImprovAPP << "," << final_cost_DUAL << "," << time_DUAL
 				<< "," << final_cost_GRETREE << "," << time_GRETREE << "," << final_cost_GREPATH << "," << time_GREPATH << "," << final_cost_DPBF << "," << time_DPBF << ","
-			<< final_cost_ENSteiner_P << "," << time_ENSteiner_P << "," << final_cost_PrunedDPPP_P << "," << time_PrunedDPPP_P
-				<< "," << final_cost_ImprovAPP_P << "," << time_ImprovAPP_P << "," << final_cost_DUAL_P << "," << time_DUAL_P
-				<< "," << final_cost_GRETREE_P << "," << time_GRETREE_P << "," << final_cost_GREPATH_P << "," << time_GREPATH_P << "," << final_cost_DPBF_P << "," << time_DPBF_P << endl;
+				<< vertices_in_queried_groups << "," << final_RAM_ENSteiner << "," << final_RAM_ImprovAPP << "," << final_RAM_PrunedDPPP
+				<< "," << final_RAM_DPBF << "," << final_RAM_DUAL << "," << final_RAM_GRETREE << "," << final_RAM_GREPATH
+				<< "," << k_SOTA << "," << RAM_PLL << "," << gmin_global << "," << PrunedDPPP_LB_final << "," << final_cost_DPBF_P << "," << time_DPBF_P
+				<< "," << final_cost_DUAL_ImprovAPP << "," << time_DUAL_ImprovAPP << "," << final_cost_GRETREE_ImprovAPP << "," << time_GRETREE_ImprovAPP << endl;
 		}
 		else {
 			times--;
@@ -2712,20 +3228,34 @@ int experiment_element(string data_name, string save_name, int V, int T, double 
 #pragma endregion experiment_element
 
 #pragma region
+int k_SOTA_default = 3;
+string sampling_metho_default = "close_g";
+double tau1 = 10, tau2 = 20, tau3 = 30;
+
 void experiments() {
 
 	/* only DUAL and GRETREE do not need PLL indexes */
 
-	int amazon_pool_size = 40; // 40 for 110GB
-	int movie_pool_size = 30; // 30 for 250GB
-	int dblp_pool_size_1ec = 15; // 1ec: 20 for 700GB+, while 15 uses 450GB RAM;        
-	int dblp_pool_size_J = 15; // 15 for 600GB
-	/*one_edge_weight*/
-	if (0) {
+	int amazon_pool_size = 70; // 40 for 110GB
+	int movie_pool_size = 70; // 60 for 300GB
+	int dblp_pool_size_1ec = 60; // 1ec: 20 for 700GB+, while 15 uses 450GB RAM;        
+	int dblp_pool_size_J = 30; // 15 for 500GB
+
+	int heap_type_f = 0, heap_type_b = 1, heap_type_p = 2;
+	int heap_type_default = heap_type_f;
+
+	int graph_search_type_bfs = 0, graph_search_type_rw = 1;
+	int graph_search_type_default = graph_search_type_rw;
+	
+
+
+	/*A1A2improvapp*/
+	if (1) {
 		bool one_edge_weight = true;
+		string graph_search_type_name = "";
 
 		/*amazon*/
-		if (0) {
+		if (1) {
 
 			ThreadPool pool(amazon_pool_size); // use pool_size threads
 			std::vector< std::future<int> > results;
@@ -2740,100 +3270,260 @@ void experiments() {
 
 			int split_num = 20;
 			for (int ii = 1; ii <= split_num; ii++) {
+				if (1) {
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+						experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_A1improvapp_" + to_string(ii) + ".csv", 300, T, b, tau, P_min, P_max, iteration_times / split_num,
+							0, 0, 0, 0, 0, 1, 0, one_edge_weight, heap_type_default, graph_search_type_default, 1, 0, k_SOTA_default, sampling_metho_default);  // v=200 may meet a signoficantly slow instance; v=500 uses >500GB memory
+						return 1; }));
+				}
+				if (1) {
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+						experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_A2improvapp_" + to_string(ii) + ".csv", 548552, T, b, tau, P_min, P_max, iteration_times / split_num,
+							0, 0, 0, 0, 0, 1, 0, one_edge_weight, heap_type_default, graph_search_type_default, 0, 1, k_SOTA_default, sampling_metho_default);  // v=200 may meet a signoficantly slow instance; v=500 uses >500GB memory
+						return 1; }));
+				}
+			}
+			for (auto&& result : results) {
+				result.get(); // wait for the below clear
+			}
+			clear_global_PLL_indexes("amazon", one_edge_weight);
+			clear_global_graphs("global_amazon_full_graph_1ec");
+			clear_global_graphs("global_amazon_small_graph_1ec");
+		}
+
+		/*dblp*/
+		if (1) {
+
+			if (1) {
+				load_global_graphs("global_dblp_full_graph_1ec");
+				string data_name = "dblp";
+				int iteration_times = 100;
+				int V = 2497782, T = 5;
+				double b = 0.9, tau = 1, P_min = 0.5, P_max = 0.9;
+
+				ThreadPool pool(dblp_pool_size_1ec); // use pool_size threads
+				std::vector< std::future<int> > results;
+				int split_num = 20;
+				for (int ii = 1; ii <= split_num; ii++) {
+					if (1) {
+						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+							experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_A1improvapp_" + to_string(ii) + ".csv", 300, T, b, tau, P_min, P_max, iteration_times / split_num,
+								0, 0, 0, 0, 0, 1, 0, one_edge_weight, heap_type_default, graph_search_type_default, 1, 0, k_SOTA_default, sampling_metho_default);  // v=200 may meet a signoficantly slow instance; v=500 uses >500GB memory
+							return 1; }));
+					}
+				}
+				for (auto&& result : results) {
+					result.get(); // wait for the below clear
+				}
+				clear_global_graphs("global_dblp_full_graph_1ec");
+			}
+
+			if (1) {
+				load_global_graphs("global_dblp_small_graph_1ec");
+				string data_name = "dblp";
+				int iteration_times = 100;
+				int V = 2497782, T = 5;
+				double b = 0.9, tau = 1, P_min = 0.5, P_max = 0.9;
+				ThreadPool pool(20); // use pool_size threads
+				std::vector< std::future<int> > results;
+				load_global_PLL_indexes("dblp_897782", one_edge_weight);
+				int split_num = 20;
+				for (int ii = 1; ii <= split_num; ii++) {
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+						experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_A2improvapp_" + to_string(ii) + ".csv", 897782, T, b, tau, P_min, P_max, iteration_times / split_num,
+							0, 0, 0, 0, 0, 1, 0, one_edge_weight, heap_type_default, graph_search_type_default, 0, 1, k_SOTA_default, sampling_metho_default);  // v=200 may meet a signoficantly slow instance; v=500 uses >500GB memory
+						return 1; }));
+				}
+				for (auto&& result : results) {
+					result.get(); // to finish the above threads; since the amazon and movie threads return 1, but not return experiment_element value, amazon and movie threads do not need to be finished here
+				}
+				clear_global_PLL_indexes("dblp_897782", one_edge_weight); // to save memory
+				clear_global_graphs("global_dblp_small_graph_1ec");
+			}
+		}
+
+		/*movie*/
+		if (1) {
+
+			ThreadPool pool(movie_pool_size); // use pool_size threads
+			std::vector< std::future<int> > results;
+
+			string data_name = "movie";
+			load_global_PLL_indexes(data_name, one_edge_weight);
+			load_global_graphs("global_movie_full_graph_1ec");
+			int iteration_times = 100;
+			int V = 62423, T = 5;
+			double b = 0.9, tau = 1, P_min = 0.5, P_max = 0.9;
+
+			int split_num = 20;
+			for (int ii = 1; ii <= split_num; ii++) {
+				if (1) {
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+						experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_A1improvapp_" + to_string(ii) + ".csv", 300, T, b, tau, P_min, P_max, iteration_times / split_num,
+							0, 0, 0, 0, 0, 1, 0, one_edge_weight, heap_type_default, graph_search_type_default, 1, 0, k_SOTA_default, sampling_metho_default);  // v=200 may meet a signoficantly slow instance; v=500 uses >500GB memory
+						return 1; }));
+				}
+				if (1) {
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+						experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_A2improvapp_" + to_string(ii) + ".csv", 4000, T, b, tau, P_min, P_max, iteration_times / split_num,
+							0, 0, 0, 0, 0, 1, 0, one_edge_weight, heap_type_default, graph_search_type_default, 0, 1, k_SOTA_default, sampling_metho_default);  // v=200 may meet a signoficantly slow instance; v=500 uses >500GB memory
+						return 1; }));
+				}
+			}
+			for (auto&& result : results) {
+				result.get(); // wait for the below clear
+			}
+			clear_global_PLL_indexes("movie", one_edge_weight);
+			clear_global_graphs("global_movie_full_graph_1ec");
+		}
+
+	}
+
+	/*one_edge_weight*/
+	for (int i_1ec = 0; i_1ec < 0; i_1ec++) {
+
+		bool one_edge_weight = true;
+		string graph_search_type_name = "";
+
+		/*do not use this, just do random walk*/
+		//if (i_1ec == 1 && 1) {
+		//	continue;
+		//}
+		//else {
+		//	graph_search_type_default = graph_search_type_bfs;
+		//	graph_search_type_name = "_bfs";
+		//}
+
+		/*amazon*/
+		if (0) {
+
+			ThreadPool pool(amazon_pool_size); // use pool_size threads
+			std::vector< std::future<int> > results;
+
+			string data_name = "amazon";
+			load_global_PLL_indexes(data_name, one_edge_weight);
+			load_global_graphs("global_amazon_full_graph_1ec");
+			load_global_graphs("global_amazon_small_graph_1ec");
+			int iteration_times = 300;
+			int V = 548552, T = 5;
+			double b = 0.9, tau = 1, P_min = 0.5, P_max = 0.9;
+
+			int split_num = 20;
+			for (int ii = 1; ii <= split_num; ii++) {
 
 				/*vary V*/
 				if (1) {
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_V_1_" + to_string(ii) + ".csv", 45, T, b, tau, P_min, P_max, iteration_times / split_num,
-							true, true, true, true, true, true, true, one_edge_weight); // 50 is sometimes too slow
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+						experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_one_edge_weight_vary_V_1_" + to_string(ii) + ".csv", 45, T, b, tau, P_min, P_max, iteration_times / split_num,
+							true, true, true, true, true, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default); // 50 is sometimes too slow
 						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_V_2_" + to_string(ii) + ".csv", 188552, T, b, tau, P_min, P_max, iteration_times / split_num,
-							true, true, true, 0, true, true, true, one_edge_weight);
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+						experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_one_edge_weight_vary_V_2_" + to_string(ii) + ".csv", 188552, T, b, tau, P_min, P_max, iteration_times / split_num,
+							true, true, true, 0, true, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_base_" + to_string(ii) + ".csv", V, T, b, tau, P_min, P_max, iteration_times / split_num,
-							true, true, true, 0, true, true, true, one_edge_weight);
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+						experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_one_edge_weight_vary_base_" + to_string(ii) + ".csv", V, T, b, tau, P_min, P_max, iteration_times / split_num,
+							true, true, true, 0, true, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
+						return 1; }));
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+						experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_one_edge_weight_vary_base_sample2_" + to_string(ii) + ".csv", V, T, b, tau, P_min, P_max, iteration_times / split_num,
+							true, true, true, 0, true, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, "random");
+						return 1; }));
+				}
+
+				/*vary k*/
+				if (1) {
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+						experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_one_edge_weight_vary_k_1_" + to_string(ii) + ".csv", V, T, b, tau, P_min, P_max, iteration_times / split_num,
+							true, true, true, 0, 0, 0, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, 1, sampling_metho_default);
+						return 1; }));
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+						experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_one_edge_weight_vary_k_2_" + to_string(ii) + ".csv", V, T, b, tau, P_min, P_max, iteration_times / split_num,
+							true, true, true, 0, 0, 0, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, 5, sampling_metho_default);
+						return 1; }));
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+						experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_one_edge_weight_vary_k_3_" + to_string(ii) + ".csv", V, T, b, tau, P_min, P_max, iteration_times / split_num,
+							true, true, true, 0, 0, 0, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, 7, sampling_metho_default);
 						return 1; }));
 				}
 
 				/*vary T*/
 				if (1) {
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_T_1_" + to_string(ii) + ".csv", V, 3, b, tau, P_min, P_max, iteration_times / split_num,
-							true, true, true, 0, true, true, true, one_edge_weight);
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+						experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_one_edge_weight_vary_T_1_" + to_string(ii) + ".csv", V, 3, b, tau, P_min, P_max, iteration_times / split_num,
+							true, true, true, 0, true, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_T_2_" + to_string(ii) + ".csv", V, 4, b, tau, P_min, P_max, iteration_times / split_num,
-							true, true, true, 0, true, true, true, one_edge_weight);
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+						experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_one_edge_weight_vary_T_2_" + to_string(ii) + ".csv", V, 4, b, tau, P_min, P_max, iteration_times / split_num,
+							true, true, true, 0, true, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_T_3_" + to_string(ii) + ".csv", V, 6, b, tau, P_min, P_max, iteration_times / split_num,
-							true, true, true, 0, true, true, true, one_edge_weight);
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+						experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_one_edge_weight_vary_T_3_" + to_string(ii) + ".csv", V, 6, b, tau, P_min, P_max, iteration_times / split_num,
+							true, true, true, 0, true, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 						return 1; }));
 				}
 
 				/*vary b*/
 				if (1) {
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_b_1_" + to_string(ii) + ".csv", V, T, 0.8, tau, P_min, P_max, iteration_times / split_num,
-							true, true, true, 0, true, true, true, one_edge_weight);
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+						experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_one_edge_weight_vary_b_1_" + to_string(ii) + ".csv", V, T, 0.8, tau, P_min, P_max, iteration_times / split_num,
+							true, true, true, 0, true, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_b_2_" + to_string(ii) + ".csv", V, T, 0.85, tau, P_min, P_max, iteration_times / split_num,
-							true, true, true, 0, true, true, true, one_edge_weight);
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+						experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_one_edge_weight_vary_b_2_" + to_string(ii) + ".csv", V, T, 0.85, tau, P_min, P_max, iteration_times / split_num,
+							true, true, true, 0, true, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_b_3_" + to_string(ii) + ".csv", V, T, 0.95, tau, P_min, P_max, iteration_times / split_num,
-							true, true, true, 0, true, true, true, one_edge_weight);
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+						experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_one_edge_weight_vary_b_3_" + to_string(ii) + ".csv", V, T, 0.95, tau, P_min, P_max, iteration_times / split_num,
+							true, true, true, 0, true, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 						return 1; }));
 				}
 
 				/*vary tau*/
 				if (1) {
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_tau_1_" + to_string(ii) + ".csv", V, T, b, 3, P_min, P_max, iteration_times / split_num,
-							0, true, 0, 0, true, 0, 0, one_edge_weight);
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+						experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_one_edge_weight_vary_tau_1_" + to_string(ii) + ".csv", V, T, b, tau1, P_min, P_max, iteration_times / split_num,
+							0, true, 0, 0, true, 0, 0, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_tau_2_" + to_string(ii) + ".csv", V, T, b, 5, P_min, P_max, iteration_times / split_num,
-							0, true, 0, 0, true, 0, 0, one_edge_weight);
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+						experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_one_edge_weight_vary_tau_2_" + to_string(ii) + ".csv", V, T, b, tau2, P_min, P_max, iteration_times / split_num,
+							0, true, 0, 0, true, 0, 0, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_tau_3_" + to_string(ii) + ".csv", V, T, b, 7, P_min, P_max, iteration_times / split_num,
-							0, true, 0, 0, true, 0, 0, one_edge_weight);
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+						experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_one_edge_weight_vary_tau_3_" + to_string(ii) + ".csv", V, T, b, tau3, P_min, P_max, iteration_times / split_num,
+							0, true, 0, 0, true, 0, 0, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 						return 1; }));
 				}
 
 				/*vary P_min*/
 				if (1) {
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_P_min_1_" + to_string(ii) + ".csv", V, T, b, tau, 0.4, P_max, iteration_times / split_num,
-							true, true, true, 0, true, true, true, one_edge_weight);
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+						experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_one_edge_weight_vary_P_min_1_" + to_string(ii) + ".csv", V, T, b, tau, 0.4, P_max, iteration_times / split_num,
+							true, true, true, 0, true, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_P_min_2_" + to_string(ii) + ".csv", V, T, b, tau, 0.6, P_max, iteration_times / split_num,
-							true, true, true, 0, true, true, true, one_edge_weight);
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+						experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_one_edge_weight_vary_P_min_2_" + to_string(ii) + ".csv", V, T, b, tau, 0.6, P_max, iteration_times / split_num,
+							true, true, true, 0, true, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_P_min_3_" + to_string(ii) + ".csv", V, T, b, tau, 0.7, P_max, iteration_times / split_num,
-							true, true, true, 0, true, true, true, one_edge_weight);
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+						experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_one_edge_weight_vary_P_min_3_" + to_string(ii) + ".csv", V, T, b, tau, 0.7, P_max, iteration_times / split_num,
+							true, true, true, 0, true, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 						return 1; }));
 				}
 
 				/*vary P_max*/
 				if (1) {
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_P_max_1_" + to_string(ii) + ".csv", V, T, b, tau, P_min, 0.7, iteration_times / split_num,
-							true, true, true, 0, true, true, true, one_edge_weight);
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+						experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_one_edge_weight_vary_P_max_1_" + to_string(ii) + ".csv", V, T, b, tau, P_min, 0.7, iteration_times / split_num,
+							true, true, true, 0, true, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_P_max_2_" + to_string(ii) + ".csv", V, T, b, tau, P_min, 0.8, iteration_times / split_num,
-							true, true, true, 0, true, true, true, one_edge_weight);
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+						experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_one_edge_weight_vary_P_max_2_" + to_string(ii) + ".csv", V, T, b, tau, P_min, 0.8, iteration_times / split_num,
+							true, true, true, 0, true, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_P_max_3_" + to_string(ii) + ".csv", V, T, b, tau, P_min, 1, iteration_times / split_num,
-							true, true, true, 0, true, true, true, one_edge_weight);
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+						experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_one_edge_weight_vary_P_max_3_" + to_string(ii) + ".csv", V, T, b, tau, P_min, 1, iteration_times / split_num,
+							true, true, true, 0, true, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 						return 1; }));
 				}
 
@@ -2858,8 +3548,7 @@ void experiments() {
 			string data_name = "movie";
 			load_global_PLL_indexes(data_name, one_edge_weight);
 			load_global_graphs("global_movie_full_graph_1ec");
-			load_global_graphs("global_movie_small_graph_1ec");
-			int iteration_times = 100;
+			int iteration_times = 300;
 			int V = 62423, T = 5;
 			double b = 0.9, tau = 1, P_min = 0.5, P_max = 0.9;
 
@@ -2868,97 +3557,117 @@ void experiments() {
 
 				/*vary V*/
 				if (1) {
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_V_1_" + to_string(ii) + ".csv", 70, T, b, tau, P_min, P_max, iteration_times / split_num,
-							true, true, true, true, true, true, true, one_edge_weight);
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+						experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_one_edge_weight_vary_V_1_" + to_string(ii) + ".csv", 70, T, b, tau, P_min, P_max, iteration_times / split_num,
+							true, true, true, true, true, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_V_special_" + to_string(ii) + ".csv", 2423, T, b, tau, P_min, P_max, iteration_times / split_num / 2,
-							true, true, true, 0, true, true, true, one_edge_weight);
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+						experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_one_edge_weight_vary_V_special_" + to_string(ii) + ".csv", 2423, T, b, tau, P_min, P_max, iteration_times / split_num / 2,
+							true, true, true, 0, true, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_base_" + to_string(ii) + ".csv", V, T, b, tau, P_min, P_max, iteration_times / split_num,
-							true, true, true, 0, 0, true, true, one_edge_weight);
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+						experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_one_edge_weight_vary_base_" + to_string(ii) + ".csv", V, T, b, tau, P_min, P_max, iteration_times / split_num,
+							true, true, true, 0, 0, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
+						return 1; }));
+					//results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+					//	experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_one_edge_weight_vary_base_sample2_" + to_string(ii) + ".csv", V, T, b, tau, P_min, P_max, iteration_times / split_num,
+					//		true, true, true, 0, 0, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, "random");
+					//	return 1; }));
+				}
+
+				/*vary k*/
+				if (1) {
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+						experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_one_edge_weight_vary_k_1_" + to_string(ii) + ".csv", V, T, b, tau, P_min, P_max, iteration_times / split_num,
+							true, true, true, 0, 0, 0, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, 1, sampling_metho_default);
+						return 1; }));
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+						experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_one_edge_weight_vary_k_2_" + to_string(ii) + ".csv", V, T, b, tau, P_min, P_max, iteration_times / split_num,
+							true, true, true, 0, 0, 0, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, 5, sampling_metho_default);
+						return 1; }));
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+						experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_one_edge_weight_vary_k_3_" + to_string(ii) + ".csv", V, T, b, tau, P_min, P_max, iteration_times / split_num,
+							true, true, true, 0, 0, 0, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, 7, sampling_metho_default);
 						return 1; }));
 				}
 
 				/*vary T*/
 				if (1) {
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_T_1_" + to_string(ii) + ".csv", V, 3, b, tau, P_min, P_max, iteration_times / split_num,
-							true, true, true, 0, 0, true, true, one_edge_weight);
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+						experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_one_edge_weight_vary_T_1_" + to_string(ii) + ".csv", V, 3, b, tau, P_min, P_max, iteration_times / split_num,
+							true, true, true, 0, 0, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_T_2_" + to_string(ii) + ".csv", V, 4, b, tau, P_min, P_max, iteration_times / split_num,
-							true, true, true, 0, 0, true, true, one_edge_weight);
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+						experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_one_edge_weight_vary_T_2_" + to_string(ii) + ".csv", V, 4, b, tau, P_min, P_max, iteration_times / split_num,
+							true, true, true, 0, 0, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_T_3_" + to_string(ii) + ".csv", V, 6, b, tau, P_min, P_max, iteration_times / split_num,
-							true, true, true, 0, 0, true, true, one_edge_weight);
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+						experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_one_edge_weight_vary_T_3_" + to_string(ii) + ".csv", V, 6, b, tau, P_min, P_max, iteration_times / split_num,
+							true, true, true, 0, 0, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 						return 1; }));
 				}
 
 				/*vary b*/
 				if (1) {
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_b_1_" + to_string(ii) + ".csv", V, T, 0.8, tau, P_min, P_max, iteration_times / split_num,
-							true, true, true, 0, 0, true, true, one_edge_weight);
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+						experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_one_edge_weight_vary_b_1_" + to_string(ii) + ".csv", V, T, 0.8, tau, P_min, P_max, iteration_times / split_num,
+							true, true, true, 0, 0, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_b_2_" + to_string(ii) + ".csv", V, T, 0.85, tau, P_min, P_max, iteration_times / split_num,
-							true, true, true, 0, 0, true, true, one_edge_weight);
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+						experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_one_edge_weight_vary_b_2_" + to_string(ii) + ".csv", V, T, 0.85, tau, P_min, P_max, iteration_times / split_num,
+							true, true, true, 0, 0, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_b_3_" + to_string(ii) + ".csv", V, T, 0.95, tau, P_min, P_max, iteration_times / split_num,
-							true, true, true, 0, 0, true, true, one_edge_weight);
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+						experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_one_edge_weight_vary_b_3_" + to_string(ii) + ".csv", V, T, 0.95, tau, P_min, P_max, iteration_times / split_num,
+							true, true, true, 0, 0, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 						return 1; }));
 				}
 
 				/*vary tau*/
 				if (1) {
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_tau_1_" + to_string(ii) + ".csv", V, T, b, 3, P_min, P_max, iteration_times / split_num,
-							0, true, 0, 0, 0, 0, 0, one_edge_weight);
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+						experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_one_edge_weight_vary_tau_1_" + to_string(ii) + ".csv", V, T, b, tau1, P_min, P_max, iteration_times / split_num,
+							0, true, 0, 0, 0, 0, 0, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_tau_2_" + to_string(ii) + ".csv", V, T, b, 5, P_min, P_max, iteration_times / split_num,
-							0, true, 0, 0, 0, 0, 0, one_edge_weight);
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+						experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_one_edge_weight_vary_tau_2_" + to_string(ii) + ".csv", V, T, b, tau2, P_min, P_max, iteration_times / split_num,
+							0, true, 0, 0, 0, 0, 0, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_tau_3_" + to_string(ii) + ".csv", V, T, b, 7, P_min, P_max, iteration_times / split_num,
-							0, true, 0, 0, 0, 0, 0, one_edge_weight);
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+						experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_one_edge_weight_vary_tau_3_" + to_string(ii) + ".csv", V, T, b, tau3, P_min, P_max, iteration_times / split_num,
+							0, true, 0, 0, 0, 0, 0, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 						return 1; }));
 				}
 
 				/*vary P_min*/
 				if (1) {
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_P_min_1_" + to_string(ii) + ".csv", V, T, b, tau, 0.4, P_max, iteration_times / split_num,
-							true, true, true, 0, 0, true, true, one_edge_weight);
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+						experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_one_edge_weight_vary_P_min_1_" + to_string(ii) + ".csv", V, T, b, tau, 0.4, P_max, iteration_times / split_num,
+							true, true, true, 0, 0, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_P_min_2_" + to_string(ii) + ".csv", V, T, b, tau, 0.6, P_max, iteration_times / split_num,
-							true, true, true, 0, 0, true, true, one_edge_weight);
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+						experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_one_edge_weight_vary_P_min_2_" + to_string(ii) + ".csv", V, T, b, tau, 0.6, P_max, iteration_times / split_num,
+							true, true, true, 0, 0, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_P_min_3_" + to_string(ii) + ".csv", V, T, b, tau, 0.7, P_max, iteration_times / split_num,
-							true, true, true, 0, 0, true, true, one_edge_weight);
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+						experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_one_edge_weight_vary_P_min_3_" + to_string(ii) + ".csv", V, T, b, tau, 0.7, P_max, iteration_times / split_num,
+							true, true, true, 0, 0, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 						return 1; }));
 				}
 
 				/*vary P_max*/
 				if (1) {
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_P_max_1_" + to_string(ii) + ".csv", V, T, b, tau, P_min, 0.7, iteration_times / split_num,
-							true, true, true, 0, 0, true, true, one_edge_weight);
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+						experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_one_edge_weight_vary_P_max_1_" + to_string(ii) + ".csv", V, T, b, tau, P_min, 0.7, iteration_times / split_num,
+							true, true, true, 0, 0, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_P_max_2_" + to_string(ii) + ".csv", V, T, b, tau, P_min, 0.8, iteration_times / split_num,
-							true, true, true, 0, 0, true, true, one_edge_weight);
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+						experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_one_edge_weight_vary_P_max_2_" + to_string(ii) + ".csv", V, T, b, tau, P_min, 0.8, iteration_times / split_num,
+							true, true, true, 0, 0, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_P_max_3_" + to_string(ii) + ".csv", V, T, b, tau, P_min, 1, iteration_times / split_num,
-							true, true, true, 0, 0, true, true, one_edge_weight);
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+						experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_one_edge_weight_vary_P_max_3_" + to_string(ii) + ".csv", V, T, b, tau, P_min, 1, iteration_times / split_num,
+							true, true, true, 0, 0, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 						return 1; }));
 				}
 
@@ -2969,9 +3678,7 @@ void experiments() {
 			}
 			clear_global_PLL_indexes("movie", one_edge_weight);
 			clear_global_graphs("global_movie_full_graph_1ec");
-			clear_global_graphs("global_movie_small_graph_1ec");
 		}
-
 
 		/*dblp*/
 		if (1) {
@@ -2979,28 +3686,28 @@ void experiments() {
 			load_global_graphs("global_dblp_full_graph_1ec");
 			load_global_graphs("global_dblp_small_graph_1ec");
 			string data_name = "dblp";
-			int iteration_times = 100;
+			int iteration_times = 300;
 			int V = 2497782, T = 5;
 			double b = 0.9, tau = 1, P_min = 0.5, P_max = 0.9;
 
 			/*V2*/
-			if (1) {
-				ThreadPool pool(20); // use pool_size threads
+			if (0) {
+				ThreadPool pool(50); // use pool_size threads
 				std::vector< std::future<int> > results;
 
-				int split_num = 20;
+				int split_num = 50;
 				if (1) {
 					load_global_PLL_indexes("dblp_897782", one_edge_weight);
 					for (int ii = 1; ii <= split_num; ii++) {
-						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-							return experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_V_2_" + to_string(ii) + ".csv", 897782, T, b, tau, P_min, P_max,
-								iteration_times / split_num, true, true, true, 0, true, true, true, one_edge_weight);
+						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+							return experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_one_edge_weight_vary_V_2_" + to_string(ii) + ".csv", 897782, T, b, tau, P_min, P_max,
+								iteration_times / split_num, true, true, true, 0, true, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 						}));
 					}
 					for (auto&& result : results) {
 						result.get(); // to finish the above threads; since the amazon and movie threads return 1, but not return experiment_element value, amazon and movie threads do not need to be finished here
 					}
-					results.clear(); // future get value can only be called once for each thread result, must clear results here, otherwise you should not call the above future value again!
+					std::vector<std::future<int>>().swap(results); // future get value can only be called once for each thread result, must clear results here, otherwise you should not call the above future value again!
 					clear_global_PLL_indexes("dblp_897782", one_edge_weight); // to save memory
 				}
 			}
@@ -3017,93 +3724,113 @@ void experiments() {
 
 					/*vary V*/
 					if (1) {
-						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-							experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_V_1_" + to_string(ii) + ".csv", 90, T, b, tau, P_min, P_max, iteration_times / split_num,
-								true, true, true, true, true, true, true, one_edge_weight);
+						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+							experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_one_edge_weight_vary_V_1_" + to_string(ii) + ".csv", 90, T, b, tau, P_min, P_max, iteration_times / split_num,
+								true, true, true, true, true, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 							return 1; }));
-						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-							experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_base_" + to_string(ii) + ".csv", V, T, b, tau, P_min, P_max, iteration_times / split_num,
-								true, true, true, 0, 0, true, true, one_edge_weight);
+						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+							experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_one_edge_weight_vary_base_" + to_string(ii) + ".csv", V, T, b, tau, P_min, P_max, iteration_times / split_num,
+								true, true, true, 0, 0, true, 0, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
+							return 1; }));
+						//results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+						//	experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_one_edge_weight_vary_base_sample2_" + to_string(ii) + ".csv", V, T, b, tau, P_min, P_max, iteration_times / split_num,
+						//		true, true, true, 0, 0, true, 0, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, "random");
+						//	return 1; }));
+					}
+
+					/*vary k*/
+					if (1) {
+						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+							experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_one_edge_weight_vary_k_1_" + to_string(ii) + ".csv", V, T, b, tau, P_min, P_max, iteration_times / split_num,
+								true, true, true, 0, 0, 0, 0, one_edge_weight, heap_type_default, graph_search_type_default, false, false, 1, sampling_metho_default);
+							return 1; }));
+						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+							experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_one_edge_weight_vary_k_2_" + to_string(ii) + ".csv", V, T, b, tau, P_min, P_max, iteration_times / split_num,
+								true, true, true, 0, 0, 0, 0, one_edge_weight, heap_type_default, graph_search_type_default, false, false, 5, sampling_metho_default);
+							return 1; }));
+						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+							experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_one_edge_weight_vary_k_3_" + to_string(ii) + ".csv", V, T, b, tau, P_min, P_max, iteration_times / split_num,
+								true, true, true, 0, 0, 0, 0, one_edge_weight, heap_type_default, graph_search_type_default, false, false, 7, sampling_metho_default);
 							return 1; }));
 					}
 
 					/*vary T*/
 					if (1) {
-						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-							experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_T_1_" + to_string(ii) + ".csv", V, 3, b, tau, P_min, P_max, iteration_times / split_num,
-								true, true, true, 0, 0, true, true, one_edge_weight);
+						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+							experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_one_edge_weight_vary_T_1_" + to_string(ii) + ".csv", V, 3, b, tau, P_min, P_max, iteration_times / split_num,
+								true, true, true, 0, 0, true, 0, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 							return 1; }));
-						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-							experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_T_2_" + to_string(ii) + ".csv", V, 4, b, tau, P_min, P_max, iteration_times / split_num,
-								true, true, true, 0, 0, true, true, one_edge_weight);
+						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+							experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_one_edge_weight_vary_T_2_" + to_string(ii) + ".csv", V, 4, b, tau, P_min, P_max, iteration_times / split_num,
+								true, true, true, 0, 0, true, 0, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 							return 1; }));
-						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-							experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_T_3_" + to_string(ii) + ".csv", V, 6, b, tau, P_min, P_max, iteration_times / split_num,
-								true, true, true, 0, 0, true, true, one_edge_weight);
+						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+							experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_one_edge_weight_vary_T_3_" + to_string(ii) + ".csv", V, 6, b, tau, P_min, P_max, iteration_times / split_num,
+								true, true, true, 0, 0, true, 0, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 							return 1; }));
 					}
 
 					/*vary b*/
 					if (1) {
-						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-							experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_b_1_" + to_string(ii) + ".csv", V, T, 0.8, tau, P_min, P_max, iteration_times / split_num,
-								true, true, true, 0, 0, true, true, one_edge_weight);
+						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+							experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_one_edge_weight_vary_b_1_" + to_string(ii) + ".csv", V, T, 0.8, tau, P_min, P_max, iteration_times / split_num,
+								true, true, true, 0, 0, true, 0, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 							return 1; }));
-						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-							experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_b_2_" + to_string(ii) + ".csv", V, T, 0.85, tau, P_min, P_max, iteration_times / split_num,
-								true, true, true, 0, 0, true, true, one_edge_weight);
+						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+							experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_one_edge_weight_vary_b_2_" + to_string(ii) + ".csv", V, T, 0.85, tau, P_min, P_max, iteration_times / split_num,
+								true, true, true, 0, 0, true, 0, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 							return 1; }));
-						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-							experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_b_3_" + to_string(ii) + ".csv", V, T, 0.95, tau, P_min, P_max, iteration_times / split_num,
-								true, true, true, 0, 0, true, true, one_edge_weight);
+						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+							experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_one_edge_weight_vary_b_3_" + to_string(ii) + ".csv", V, T, 0.95, tau, P_min, P_max, iteration_times / split_num,
+								true, true, true, 0, 0, true, 0, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 							return 1; }));
 					}
 
 					/*vary tau*/
 					if (1) {
-						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-							experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_tau_1_" + to_string(ii) + ".csv", V, T, b, 3, P_min, P_max, iteration_times / split_num,
-								0, true, 0, 0, 0, 0, 0, one_edge_weight);
+						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+							experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_one_edge_weight_vary_tau_1_" + to_string(ii) + ".csv", V, T, b, tau1, P_min, P_max, iteration_times / split_num,
+								0, true, 0, 0, 0, 0, 0, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 							return 1; }));
-						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-							experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_tau_2_" + to_string(ii) + ".csv", V, T, b, 5, P_min, P_max, iteration_times / split_num,
-								0, true, 0, 0, 0, 0, 0, one_edge_weight);
+						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+							experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_one_edge_weight_vary_tau_2_" + to_string(ii) + ".csv", V, T, b, tau2, P_min, P_max, iteration_times / split_num,
+								0, true, 0, 0, 0, 0, 0, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 							return 1; }));
-						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-							experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_tau_3_" + to_string(ii) + ".csv", V, T, b, 7, P_min, P_max, iteration_times / split_num,
-								0, true, 0, 0, 0, 0, 0, one_edge_weight);
+						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+							experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_one_edge_weight_vary_tau_3_" + to_string(ii) + ".csv", V, T, b, tau3, P_min, P_max, iteration_times / split_num,
+								0, true, 0, 0, 0, 0, 0, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 							return 1; }));
 					}
 
 					/*vary P_min*/
 					if (1) {
-						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-							experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_P_min_1_" + to_string(ii) + ".csv", V, T, b, tau, 0.4, P_max, iteration_times / split_num,
-								true, true, true, 0, 0, true, true, one_edge_weight);
+						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+							experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_one_edge_weight_vary_P_min_1_" + to_string(ii) + ".csv", V, T, b, tau, 0.4, P_max, iteration_times / split_num,
+								true, true, true, 0, 0, true, 0, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 							return 1; }));
-						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-							experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_P_min_2_" + to_string(ii) + ".csv", V, T, b, tau, 0.6, P_max, iteration_times / split_num,
-								true, true, true, 0, 0, true, true, one_edge_weight);
+						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+							experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_one_edge_weight_vary_P_min_2_" + to_string(ii) + ".csv", V, T, b, tau, 0.6, P_max, iteration_times / split_num,
+								true, true, true, 0, 0, true, 0, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 							return 1; }));
-						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-							experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_P_min_3_" + to_string(ii) + ".csv", V, T, b, tau, 0.7, P_max, iteration_times / split_num,
-								true, true, true, 0, 0, true, true, one_edge_weight);
+						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+							experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_one_edge_weight_vary_P_min_3_" + to_string(ii) + ".csv", V, T, b, tau, 0.7, P_max, iteration_times / split_num,
+								true, true, true, 0, 0, true, 0, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 							return 1; }));
 					}
 
 					/*vary P_max*/
 					if (1) {
-						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-							experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_P_max_1_" + to_string(ii) + ".csv", V, T, b, tau, P_min, 0.7, iteration_times / split_num,
-								true, true, true, 0, 0, true, true, one_edge_weight);
+						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+							experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_one_edge_weight_vary_P_max_1_" + to_string(ii) + ".csv", V, T, b, tau, P_min, 0.7, iteration_times / split_num,
+								true, true, true, 0, 0, true, 0, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 							return 1; }));
-						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-							experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_P_max_2_" + to_string(ii) + ".csv", V, T, b, tau, P_min, 0.8, iteration_times / split_num,
-								true, true, true, 0, 0, true, true, one_edge_weight);
+						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+							experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_one_edge_weight_vary_P_max_2_" + to_string(ii) + ".csv", V, T, b, tau, P_min, 0.8, iteration_times / split_num,
+								true, true, true, 0, 0, true, 0, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 							return 1; }));
-						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-							experiment_element(data_name, "Exp_" + data_name + "_one_edge_weight_vary_P_max_3_" + to_string(ii) + ".csv", V, T, b, tau, P_min, 1, iteration_times / split_num,
-								true, true, true, 0, 0, true, true, one_edge_weight);
+						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default, graph_search_type_name] {
+							experiment_element(data_name, "Exp_" + data_name + graph_search_type_name + "_one_edge_weight_vary_P_max_3_" + to_string(ii) + ".csv", V, T, b, tau, P_min, 1, iteration_times / split_num,
+								true, true, true, 0, 0, true, 0, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 							return 1; }));
 					}
 
@@ -3111,7 +3838,7 @@ void experiments() {
 				for (auto&& result : results) {
 					result.get(); // wait for the below clear
 				}
-				results.clear();
+				std::vector<std::future<int>>().swap(results);
 				clear_global_PLL_indexes("dblp_2497782", one_edge_weight);
 			}
 
@@ -3119,10 +3846,12 @@ void experiments() {
 			clear_global_graphs("global_dblp_small_graph_1ec");
 
 		}
+
 	}
 
-	/*Jacard*/
-	if (1) {
+
+	/*Jacard tiny small full*/
+	if (0) {
 		bool one_edge_weight = false;
 
 		/*amazon*/
@@ -3135,7 +3864,7 @@ void experiments() {
 			load_global_PLL_indexes(data_name, one_edge_weight);
 			load_global_graphs("global_amazon_full_graph");
 			load_global_graphs("global_amazon_small_graph");
-			int iteration_times = 100;
+			int iteration_times = 300;
 			int V = 548552, T = 5;
 			double b = 0.9, tau = 1, P_min = 0.5, P_max = 0.9;
 
@@ -3144,102 +3873,19 @@ void experiments() {
 
 				/*vary V*/
 				if (1) {
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
 						experiment_element(data_name, "Exp_" + data_name + "_vary_V_1_" + to_string(ii) + ".csv", 45, T, b, tau, P_min, P_max, iteration_times / split_num,
-							true, true, true, true, true, true, true, one_edge_weight);
+							true, true, true, true, true, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 						return 1; })); // DUAL is often very slow when V=70, sometimes even when V=50
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
 						experiment_element(data_name, "Exp_" + data_name + "_vary_V_2_" + to_string(ii) + ".csv", 188552, T, b, tau, P_min, P_max, iteration_times / split_num,
-							true, true, true, 0, true, true, true, one_edge_weight);
+							true, true, true, 0, true, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
 						experiment_element(data_name, "Exp_" + data_name + "_vary_base_" + to_string(ii) + ".csv", V, T, b, tau, P_min, P_max, iteration_times / split_num,
-							true, true, true, 0, true, true, true, one_edge_weight);
+							true, true, true, 0, true, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 						return 1; }));
 				}
-
-				/*vary T*/
-				if (1) {
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_vary_T_1_" + to_string(ii) + ".csv", V, 3, b, tau, P_min, P_max, iteration_times / split_num,
-							true, true, true, 0, true, true, true, one_edge_weight);
-						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_vary_T_2_" + to_string(ii) + ".csv", V, 4, b, tau, P_min, P_max, iteration_times / split_num,
-							true, true, true, 0, true, true, true, one_edge_weight);
-						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_vary_T_3_" + to_string(ii) + ".csv", V, 6, b, tau, P_min, P_max, iteration_times / split_num,
-							true, true, true, 0, true, true, true, one_edge_weight);
-						return 1; }));
-				}
-
-				/*vary b*/
-				if (1) {
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_vary_b_1_" + to_string(ii) + ".csv", V, T, 0.8, tau, P_min, P_max, iteration_times / split_num,
-							true, true, true, 0, true, true, true, one_edge_weight);
-						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_vary_b_2_" + to_string(ii) + ".csv", V, T, 0.85, tau, P_min, P_max, iteration_times / split_num,
-							true, true, true, 0, true, true, true, one_edge_weight);
-						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_vary_b_3_" + to_string(ii) + ".csv", V, T, 0.95, tau, P_min, P_max, iteration_times / split_num,
-							true, true, true, 0, true, true, true, one_edge_weight);
-						return 1; }));
-				}
-
-				/*vary tau*/
-				if (1) {
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_vary_tau_1_" + to_string(ii) + ".csv", V, T, b, 3, P_min, P_max, iteration_times / split_num,
-							0, true, 0, 0, true, 0, 0, one_edge_weight);
-						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_vary_tau_2_" + to_string(ii) + ".csv", V, T, b, 5, P_min, P_max, iteration_times / split_num,
-							0, true, 0, 0, true, 0, 0, one_edge_weight);
-						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_vary_tau_3_" + to_string(ii) + ".csv", V, T, b, 7, P_min, P_max, iteration_times / split_num,
-							0, true, 0, 0, true, 0, 0, one_edge_weight);
-						return 1; }));
-				}
-
-				/*vary P_min*/
-				if (1) {
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_vary_P_min_1_" + to_string(ii) + ".csv", V, T, b, tau, 0.4, P_max, iteration_times / split_num,
-							true, true, true, 0, true, true, true, one_edge_weight);
-						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_vary_P_min_2_" + to_string(ii) + ".csv", V, T, b, tau, 0.6, P_max, iteration_times / split_num,
-							true, true, true, 0, true, true, true, one_edge_weight);
-						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_vary_P_min_3_" + to_string(ii) + ".csv", V, T, b, tau, 0.7, P_max, iteration_times / split_num,
-							true, true, true, 0, true, true, true, one_edge_weight);
-						return 1; }));
-				}
-
-				/*vary P_max*/
-				if (1) {
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_vary_P_max_1_" + to_string(ii) + ".csv", V, T, b, tau, P_min, 0.7, iteration_times / split_num,
-							true, true, true, 0, true, true, true, one_edge_weight);
-						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_vary_P_max_2_" + to_string(ii) + ".csv", V, T, b, tau, P_min, 0.8, iteration_times / split_num,
-							true, true, true, 0, true, true, true, one_edge_weight);
-						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_vary_P_max_3_" + to_string(ii) + ".csv", V, T, b, tau, P_min, 1, iteration_times / split_num,
-							true, true, true, 0, true, true, true, one_edge_weight);
-						return 1; }));
-				}
-
-
-				
 			}
 
 			for (auto&& result : results) {
@@ -3251,121 +3897,37 @@ void experiments() {
 		}
 
 		/*movie*/
-		if (0) {
+		if (1) {
 
 			ThreadPool pool(movie_pool_size); // use pool_size threads
 			std::vector< std::future<int> > results;
 
 			load_global_graphs("global_movie_full_graph");
-			load_global_graphs("global_movie_small_graph");
 			string data_name = "movie";
 			load_global_PLL_indexes(data_name, one_edge_weight);
-			int iteration_times = 100;
+			int iteration_times = 300;
 			int V = 62423, T = 5;
 			double b = 0.9, tau = 1, P_min = 0.5, P_max = 0.9;
 
 
 			int split_num = 20;
 			for (int ii = 1; ii <= split_num; ii++) {
-				
+
 				/*vary V*/
 				if (1) {
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_vary_V_1_" + to_string(ii) + ".csv", 70, T, b, tau, P_min, P_max, iteration_times / split_num, 
-							true, true, true, true, true, true, true, one_edge_weight);
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
+						experiment_element(data_name, "Exp_" + data_name + "_vary_V_1_" + to_string(ii) + ".csv", 70, T, b, tau, P_min, P_max, iteration_times / split_num,
+							true, true, true, true, true, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
 						experiment_element(data_name, "Exp_" + data_name + "_vary_V_special_" + to_string(ii) + ".csv", 2423, T, b, tau, P_min, P_max, iteration_times / split_num / 2,
-							true, true, true, 0, true, true, true, one_edge_weight);
+							true, true, true, 0, true, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
 						experiment_element(data_name, "Exp_" + data_name + "_vary_base_" + to_string(ii) + ".csv", V, T, b, tau, P_min, P_max, iteration_times / split_num,
-							true, true, true, 0, 0, true, true, one_edge_weight);
+							true, true, true, 0, 0, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 						return 1; }));
 				}
-
-				/*vary T*/
-				if (1) {
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_vary_T_1_" + to_string(ii) + ".csv", V, 3, b, tau, P_min, P_max, iteration_times / split_num,
-							true, true, true, 0, 0, true, true, one_edge_weight);
-						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_vary_T_2_" + to_string(ii) + ".csv", V, 4, b, tau, P_min, P_max, iteration_times / split_num,
-							true, true, true, 0, 0, true, true, one_edge_weight);
-						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_vary_T_3_" + to_string(ii) + ".csv", V, 6, b, tau, P_min, P_max, iteration_times / split_num,
-							true, true, true, 0, 0, true, true, one_edge_weight);
-						return 1; }));
-				}
-
-				/*vary b*/
-				if (1) {
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_vary_b_1_" + to_string(ii) + ".csv", V, T, 0.8, tau, P_min, P_max, iteration_times / split_num,
-							true, true, true, 0, 0, true, true, one_edge_weight);
-						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_vary_b_2_" + to_string(ii) + ".csv", V, T, 0.85, tau, P_min, P_max, iteration_times / split_num,
-							true, true, true, 0, 0, true, true, one_edge_weight);
-						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_vary_b_3_" + to_string(ii) + ".csv", V, T, 0.95, tau, P_min, P_max, iteration_times / split_num,
-							true, true, true, 0, 0, true, true, one_edge_weight);
-						return 1; }));
-				}
-
-				/*vary tau*/
-				if (1) {
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_vary_tau_1_" + to_string(ii) + ".csv", V, T, b, 3, P_min, P_max, iteration_times / split_num,
-							0, true, 0, 0, 0, 0, 0, one_edge_weight);
-						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_vary_tau_2_" + to_string(ii) + ".csv", V, T, b, 5, P_min, P_max, iteration_times / split_num,
-							0, true, 0, 0, 0, 0, 0, one_edge_weight);
-						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_vary_tau_3_" + to_string(ii) + ".csv", V, T, b, 7, P_min, P_max, iteration_times / split_num,
-							0, true, 0, 0, 0, 0, 0, one_edge_weight);
-						return 1; }));
-				}
-
-				/*vary P_min*/
-				if (1) {
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_vary_P_min_1_" + to_string(ii) + ".csv", V, T, b, tau, 0.4, P_max, iteration_times / split_num,
-							true, true, true, 0, 0, true, true, one_edge_weight);
-						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_vary_P_min_2_" + to_string(ii) + ".csv", V, T, b, tau, 0.6, P_max, iteration_times / split_num,
-							true, true, true, 0, 0, true, true, one_edge_weight);
-						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_vary_P_min_3_" + to_string(ii) + ".csv", V, T, b, tau, 0.7, P_max, iteration_times / split_num,
-							true, true, true, 0, 0, true, true, one_edge_weight);
-						return 1; }));
-				}
-
-				/*vary P_max*/
-				if (1) {
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_vary_P_max_1_" + to_string(ii) + ".csv", V, T, b, tau, P_min, 0.7, iteration_times / split_num,
-							true, true, true, 0, 0, true, true, one_edge_weight);
-						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_vary_P_max_2_" + to_string(ii) + ".csv", V, T, b, tau, P_min, 0.8, iteration_times / split_num,
-							true, true, true, 0, 0, true, true, one_edge_weight);
-						return 1; }));
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-						experiment_element(data_name, "Exp_" + data_name + "_vary_P_max_3_" + to_string(ii) + ".csv", V, T, b, tau, P_min, 1, iteration_times / split_num,
-							true, true, true, 0, 0, true, true, one_edge_weight);
-						return 1; }));
-				}
-
-
-
 			}
 
 			for (auto&& result : results) {
@@ -3373,7 +3935,6 @@ void experiments() {
 			}
 			clear_global_PLL_indexes("movie", one_edge_weight);
 			clear_global_graphs("global_movie_full_graph");
-			clear_global_graphs("global_movie_small_graph");
 		}
 
 		/*dblp*/
@@ -3381,31 +3942,31 @@ void experiments() {
 			load_global_graphs("global_dblp_full_graph");
 			load_global_graphs("global_dblp_small_graph");
 			string data_name = "dblp";
-			int iteration_times = 100;
+			int iteration_times = 300;
 			int V = 2497782, T = 5;
 			double b = 0.9, tau = 1, P_min = 0.5, P_max = 0.9;
 
+
 			/*V2*/
 			if (1) {
-				ThreadPool pool(20); // use pool_size threads
+				ThreadPool pool(50); // use pool_size threads
 				std::vector< std::future<int> > results;
 
-				int split_num = 20;
+				int split_num = 50;
 
 				load_global_PLL_indexes("dblp_448891", one_edge_weight);
 				for (int ii = 1; ii <= split_num; ii++) {
-					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
 						return experiment_element(data_name, "Exp_" + data_name + "_vary_V_2_" + to_string(ii) + ".csv", 448891, T, b, tau, P_min, P_max,
-							iteration_times / split_num, true, true, true, 0, true, true, true, one_edge_weight);
+							iteration_times / split_num, true, true, true, 0, true, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 					}));
 				}
 				for (auto&& result : results) {
 					result.get(); // to finish the above threads; since the amazon and movie threads return 1, but not return experiment_element value, amazon and movie threads do not need to be finished here
 				}
-				results.clear(); // future get value can only be called once for each thread result, must clear results here, otherwise you should not call the above future value again!
+				std::vector<std::future<int>>().swap(results); // future get value can only be called once for each thread result, must clear results here, otherwise you should not call the above future value again!
 				clear_global_PLL_indexes("dblp_448891", one_edge_weight); // to save memory
 			}
-
 
 			/*others*/
 			if (1) {
@@ -3418,93 +3979,463 @@ void experiments() {
 
 					/*vary V*/
 					if (1) {
-						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
 							return experiment_element(data_name, "Exp_" + data_name + "_vary_V_1_" + to_string(ii) + ".csv", 90, T, b, tau, P_min, P_max, iteration_times / split_num,
-								true, true, true, true, true, true, true, one_edge_weight);
+								true, true, true, true, true, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 						}));
-						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
 							return experiment_element(data_name, "Exp_" + data_name + "_vary_base_" + to_string(ii) + ".csv", V, T, b, tau, P_min, P_max, iteration_times / split_num,
-								true, true, true, 0, 0, true, true, one_edge_weight);
+								true, true, true, 0, 0, true, 0, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
+						}));
+					}
+				}
+				for (auto&& result : results) {
+					result.get(); // wait for the below clear
+				}
+				std::vector<std::future<int>>().swap(results);
+				clear_global_PLL_indexes("dblp_1248891", one_edge_weight);
+			}
+
+
+
+
+			clear_global_graphs("global_dblp_full_graph");
+			clear_global_graphs("global_dblp_small_graph");
+
+		}
+
+	}
+
+	/*Jacard*/
+	if (0) {
+		bool one_edge_weight = false;
+
+		/*amazon*/
+		if (1) {
+
+			ThreadPool pool(amazon_pool_size); // use pool_size threads
+			std::vector< std::future<int> > results;
+
+			string data_name = "amazon";
+			load_global_PLL_indexes(data_name, one_edge_weight);
+			load_global_graphs("global_amazon_full_graph");
+			load_global_graphs("global_amazon_small_graph");
+			int iteration_times = 300;
+			int V = 548552, T = 5;
+			double b = 0.9, tau = 1, P_min = 0.5, P_max = 0.9;
+
+			int split_num = 20;
+			for (int ii = 1; ii <= split_num; ii++) {
+
+				/*vary V*/
+				if (1) {
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
+						experiment_element(data_name, "Exp_" + data_name + "_vary_V_1_" + to_string(ii) + ".csv", 45, T, b, tau, P_min, P_max, iteration_times / split_num,
+							true, true, true, true, true, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
+						return 1; })); // DUAL is often very slow when V=70, sometimes even when V=50
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
+						experiment_element(data_name, "Exp_" + data_name + "_vary_V_2_" + to_string(ii) + ".csv", 188552, T, b, tau, P_min, P_max, iteration_times / split_num,
+							true, true, true, 0, true, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
+						return 1; }));
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
+						experiment_element(data_name, "Exp_" + data_name + "_vary_base_" + to_string(ii) + ".csv", V, T, b, tau, P_min, P_max, iteration_times / split_num,
+							true, true, true, 0, true, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
+						return 1; }));
+				}
+
+				/*vary k*/
+				if (1) {
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
+						experiment_element(data_name, "Exp_" + data_name + "_vary_k_1_" + to_string(ii) + ".csv", V, T, b, tau, P_min, P_max, iteration_times / split_num,
+							true, true, true, 0, 0, 0, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, 1, sampling_metho_default);
+						return 1; }));
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
+						experiment_element(data_name, "Exp_" + data_name + "_vary_k_2_" + to_string(ii) + ".csv", V, T, b, tau, P_min, P_max, iteration_times / split_num,
+							true, true, true, 0, 0, 0, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, 5, sampling_metho_default);
+						return 1; }));
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
+						experiment_element(data_name, "Exp_" + data_name + "_vary_k_3_" + to_string(ii) + ".csv", V, T, b, tau, P_min, P_max, iteration_times / split_num,
+							true, true, true, 0, 0, 0, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, 7, sampling_metho_default);
+						return 1; }));
+				}
+
+				/*vary T*/
+				if (1) {
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
+						experiment_element(data_name, "Exp_" + data_name + "_vary_T_1_" + to_string(ii) + ".csv", V, 3, b, tau, P_min, P_max, iteration_times / split_num,
+							true, true, true, 0, true, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
+						return 1; }));
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
+						experiment_element(data_name, "Exp_" + data_name + "_vary_T_2_" + to_string(ii) + ".csv", V, 4, b, tau, P_min, P_max, iteration_times / split_num,
+							true, true, true, 0, true, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
+						return 1; }));
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
+						experiment_element(data_name, "Exp_" + data_name + "_vary_T_3_" + to_string(ii) + ".csv", V, 6, b, tau, P_min, P_max, iteration_times / split_num,
+							true, true, true, 0, true, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
+						return 1; }));
+				}
+
+				/*vary b*/
+				if (1) {
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
+						experiment_element(data_name, "Exp_" + data_name + "_vary_b_1_" + to_string(ii) + ".csv", V, T, 0.8, tau, P_min, P_max, iteration_times / split_num,
+							true, true, true, 0, true, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
+						return 1; }));
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
+						experiment_element(data_name, "Exp_" + data_name + "_vary_b_2_" + to_string(ii) + ".csv", V, T, 0.85, tau, P_min, P_max, iteration_times / split_num,
+							true, true, true, 0, true, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
+						return 1; }));
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
+						experiment_element(data_name, "Exp_" + data_name + "_vary_b_3_" + to_string(ii) + ".csv", V, T, 0.95, tau, P_min, P_max, iteration_times / split_num,
+							true, true, true, 0, true, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
+						return 1; }));
+				}
+
+				/*vary tau*/
+				if (1) {
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
+						experiment_element(data_name, "Exp_" + data_name + "_vary_tau_1_" + to_string(ii) + ".csv", V, T, b, tau1, P_min, P_max, iteration_times / split_num,
+							0, true, 0, 0, true, 0, 0, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
+						return 1; }));
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
+						experiment_element(data_name, "Exp_" + data_name + "_vary_tau_2_" + to_string(ii) + ".csv", V, T, b, tau2, P_min, P_max, iteration_times / split_num,
+							0, true, 0, 0, true, 0, 0, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
+						return 1; }));
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
+						experiment_element(data_name, "Exp_" + data_name + "_vary_tau_3_" + to_string(ii) + ".csv", V, T, b, tau3, P_min, P_max, iteration_times / split_num,
+							0, true, 0, 0, true, 0, 0, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
+						return 1; }));
+				}
+
+				/*vary P_min*/
+				if (1) {
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
+						experiment_element(data_name, "Exp_" + data_name + "_vary_P_min_1_" + to_string(ii) + ".csv", V, T, b, tau, 0.4, P_max, iteration_times / split_num,
+							true, true, true, 0, true, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
+						return 1; }));
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
+						experiment_element(data_name, "Exp_" + data_name + "_vary_P_min_2_" + to_string(ii) + ".csv", V, T, b, tau, 0.6, P_max, iteration_times / split_num,
+							true, true, true, 0, true, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
+						return 1; }));
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
+						experiment_element(data_name, "Exp_" + data_name + "_vary_P_min_3_" + to_string(ii) + ".csv", V, T, b, tau, 0.7, P_max, iteration_times / split_num,
+							true, true, true, 0, true, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
+						return 1; }));
+				}
+
+				/*vary P_max*/
+				if (1) {
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
+						experiment_element(data_name, "Exp_" + data_name + "_vary_P_max_1_" + to_string(ii) + ".csv", V, T, b, tau, P_min, 0.7, iteration_times / split_num,
+							true, true, true, 0, true, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
+						return 1; }));
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
+						experiment_element(data_name, "Exp_" + data_name + "_vary_P_max_2_" + to_string(ii) + ".csv", V, T, b, tau, P_min, 0.8, iteration_times / split_num,
+							true, true, true, 0, true, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
+						return 1; }));
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
+						experiment_element(data_name, "Exp_" + data_name + "_vary_P_max_3_" + to_string(ii) + ".csv", V, T, b, tau, P_min, 1, iteration_times / split_num,
+							true, true, true, 0, true, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
+						return 1; }));
+				}
+
+
+
+			}
+
+			for (auto&& result : results) {
+				result.get(); // wait for the below clear
+			}
+			clear_global_PLL_indexes("amazon", one_edge_weight);
+			clear_global_graphs("global_amazon_full_graph");
+			clear_global_graphs("global_amazon_small_graph");
+		}
+
+		/*movie*/
+		if (1) {
+
+			ThreadPool pool(movie_pool_size); // use pool_size threads
+			std::vector< std::future<int> > results;
+
+			load_global_graphs("global_movie_full_graph");
+			string data_name = "movie";
+			load_global_PLL_indexes(data_name, one_edge_weight);
+			int iteration_times = 300;
+			int V = 62423, T = 5;
+			double b = 0.9, tau = 1, P_min = 0.5, P_max = 0.9;
+
+
+			int split_num = 20;
+			for (int ii = 1; ii <= split_num; ii++) {
+
+				/*vary V*/
+				if (1) {
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
+						experiment_element(data_name, "Exp_" + data_name + "_vary_V_1_" + to_string(ii) + ".csv", 70, T, b, tau, P_min, P_max, iteration_times / split_num,
+							true, true, true, true, true, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
+						return 1; }));
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
+						experiment_element(data_name, "Exp_" + data_name + "_vary_V_special_" + to_string(ii) + ".csv", 2423, T, b, tau, P_min, P_max, iteration_times / split_num / 2,
+							true, true, true, 0, true, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
+						return 1; }));
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
+						experiment_element(data_name, "Exp_" + data_name + "_vary_base_" + to_string(ii) + ".csv", V, T, b, tau, P_min, P_max, iteration_times / split_num,
+							true, true, true, 0, 0, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
+						return 1; }));
+				}
+
+				/*vary k*/
+				if (1) {
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
+						experiment_element(data_name, "Exp_" + data_name + "_vary_k_1_" + to_string(ii) + ".csv", V, T, b, tau, P_min, P_max, iteration_times / split_num,
+							true, true, true, 0, 0, 0, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, 1, sampling_metho_default);
+						return 1; }));
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
+						experiment_element(data_name, "Exp_" + data_name + "_vary_k_2_" + to_string(ii) + ".csv", V, T, b, tau, P_min, P_max, iteration_times / split_num,
+							true, true, true, 0, 0, 0, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, 5, sampling_metho_default);
+						return 1; }));
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
+						experiment_element(data_name, "Exp_" + data_name + "_vary_k_3_" + to_string(ii) + ".csv", V, T, b, tau, P_min, P_max, iteration_times / split_num,
+							true, true, true, 0, 0, 0, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, 7, sampling_metho_default);
+						return 1; }));
+				}
+
+				/*vary T*/
+				if (1) {
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
+						experiment_element(data_name, "Exp_" + data_name + "_vary_T_1_" + to_string(ii) + ".csv", V, 3, b, tau, P_min, P_max, iteration_times / split_num,
+							true, true, true, 0, 0, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
+						return 1; }));
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
+						experiment_element(data_name, "Exp_" + data_name + "_vary_T_2_" + to_string(ii) + ".csv", V, 4, b, tau, P_min, P_max, iteration_times / split_num,
+							true, true, true, 0, 0, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
+						return 1; }));
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
+						experiment_element(data_name, "Exp_" + data_name + "_vary_T_3_" + to_string(ii) + ".csv", V, 6, b, tau, P_min, P_max, iteration_times / split_num,
+							true, true, true, 0, 0, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
+						return 1; }));
+				}
+
+				/*vary b*/
+				if (1) {
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
+						experiment_element(data_name, "Exp_" + data_name + "_vary_b_1_" + to_string(ii) + ".csv", V, T, 0.8, tau, P_min, P_max, iteration_times / split_num,
+							true, true, true, 0, 0, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
+						return 1; }));
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
+						experiment_element(data_name, "Exp_" + data_name + "_vary_b_2_" + to_string(ii) + ".csv", V, T, 0.85, tau, P_min, P_max, iteration_times / split_num,
+							true, true, true, 0, 0, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
+						return 1; }));
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
+						experiment_element(data_name, "Exp_" + data_name + "_vary_b_3_" + to_string(ii) + ".csv", V, T, 0.95, tau, P_min, P_max, iteration_times / split_num,
+							true, true, true, 0, 0, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
+						return 1; }));
+				}
+
+				/*vary tau*/
+				if (1) {
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
+						experiment_element(data_name, "Exp_" + data_name + "_vary_tau_1_" + to_string(ii) + ".csv", V, T, b, tau1, P_min, P_max, iteration_times / split_num,
+							0, true, 0, 0, 0, 0, 0, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
+						return 1; }));
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
+						experiment_element(data_name, "Exp_" + data_name + "_vary_tau_2_" + to_string(ii) + ".csv", V, T, b, tau2, P_min, P_max, iteration_times / split_num,
+							0, true, 0, 0, 0, 0, 0, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
+						return 1; }));
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
+						experiment_element(data_name, "Exp_" + data_name + "_vary_tau_3_" + to_string(ii) + ".csv", V, T, b, tau3, P_min, P_max, iteration_times / split_num,
+							0, true, 0, 0, 0, 0, 0, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
+						return 1; }));
+				}
+
+				/*vary P_min*/
+				if (1) {
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
+						experiment_element(data_name, "Exp_" + data_name + "_vary_P_min_1_" + to_string(ii) + ".csv", V, T, b, tau, 0.4, P_max, iteration_times / split_num,
+							true, true, true, 0, 0, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
+						return 1; }));
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
+						experiment_element(data_name, "Exp_" + data_name + "_vary_P_min_2_" + to_string(ii) + ".csv", V, T, b, tau, 0.6, P_max, iteration_times / split_num,
+							true, true, true, 0, 0, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
+						return 1; }));
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
+						experiment_element(data_name, "Exp_" + data_name + "_vary_P_min_3_" + to_string(ii) + ".csv", V, T, b, tau, 0.7, P_max, iteration_times / split_num,
+							true, true, true, 0, 0, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
+						return 1; }));
+				}
+
+				/*vary P_max*/
+				if (1) {
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
+						experiment_element(data_name, "Exp_" + data_name + "_vary_P_max_1_" + to_string(ii) + ".csv", V, T, b, tau, P_min, 0.7, iteration_times / split_num,
+							true, true, true, 0, 0, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
+						return 1; }));
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
+						experiment_element(data_name, "Exp_" + data_name + "_vary_P_max_2_" + to_string(ii) + ".csv", V, T, b, tau, P_min, 0.8, iteration_times / split_num,
+							true, true, true, 0, 0, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
+						return 1; }));
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
+						experiment_element(data_name, "Exp_" + data_name + "_vary_P_max_3_" + to_string(ii) + ".csv", V, T, b, tau, P_min, 1, iteration_times / split_num,
+							true, true, true, 0, 0, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
+						return 1; }));
+				}
+
+
+
+			}
+
+			for (auto&& result : results) {
+				result.get(); // wait for the below clear
+			}
+			clear_global_PLL_indexes("movie", one_edge_weight);
+			clear_global_graphs("global_movie_full_graph");
+		}
+
+		/*dblp*/
+		if (1) {
+			load_global_graphs("global_dblp_full_graph");
+			load_global_graphs("global_dblp_small_graph");
+			string data_name = "dblp";
+			int iteration_times = 300;
+			int V = 2497782, T = 5;
+			double b = 0.9, tau = 1, P_min = 0.5, P_max = 0.9;
+
+
+			/*V2*/
+			if (1) {
+				ThreadPool pool(50); // use pool_size threads
+				std::vector< std::future<int> > results;
+
+				int split_num = 50;
+
+				load_global_PLL_indexes("dblp_448891", one_edge_weight);
+				for (int ii = 1; ii <= split_num; ii++) {
+					results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
+						return experiment_element(data_name, "Exp_" + data_name + "_vary_V_2_" + to_string(ii) + ".csv", 448891, T, b, tau, P_min, P_max,
+							iteration_times / split_num, true, true, true, 0, true, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
+					}));
+				}
+				for (auto&& result : results) {
+					result.get(); // to finish the above threads; since the amazon and movie threads return 1, but not return experiment_element value, amazon and movie threads do not need to be finished here
+				}
+				std::vector<std::future<int>>().swap(results); // future get value can only be called once for each thread result, must clear results here, otherwise you should not call the above future value again!
+				clear_global_PLL_indexes("dblp_448891", one_edge_weight); // to save memory
+			}
+			
+			/*others*/
+			if (1) {
+				ThreadPool pool(dblp_pool_size_J); // use pool_size threads
+				std::vector< std::future<int> > results;
+
+				load_global_PLL_indexes("dblp_2497782", one_edge_weight);
+				int split_num = 20;
+				for (int ii = 1; ii <= split_num; ii++) {
+
+					/*vary V*/
+					if (1) {
+						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
+							return experiment_element(data_name, "Exp_" + data_name + "_vary_V_1_" + to_string(ii) + ".csv", 90, T, b, tau, P_min, P_max, iteration_times / split_num,
+								true, true, true, true, true, true, true, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
+						}));
+						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
+							return experiment_element(data_name, "Exp_" + data_name + "_vary_base_" + to_string(ii) + ".csv", V, T, b, tau, P_min, P_max, iteration_times / split_num,
+								true, true, true, 0, 0, true, 0, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 						}));
 					}
 
+					/*vary k*/
+					if (1) {
+						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
+							experiment_element(data_name, "Exp_" + data_name + "_vary_k_1_" + to_string(ii) + ".csv", V, T, b, tau, P_min, P_max, iteration_times / split_num,
+								true, true, true, 0, 0, 0, 0, one_edge_weight, heap_type_default, graph_search_type_default, false, false, 1, sampling_metho_default);
+							return 1; }));
+						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
+							experiment_element(data_name, "Exp_" + data_name + "_vary_k_2_" + to_string(ii) + ".csv", V, T, b, tau, P_min, P_max, iteration_times / split_num,
+								true, true, true, 0, 0, 0, 0, one_edge_weight, heap_type_default, graph_search_type_default, false, false, 5, sampling_metho_default);
+							return 1; }));
+						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
+							experiment_element(data_name, "Exp_" + data_name + "_vary_k_3_" + to_string(ii) + ".csv", V, T, b, tau, P_min, P_max, iteration_times / split_num,
+								true, true, true, 0, 0, 0, 0, one_edge_weight, heap_type_default, graph_search_type_default, false, false, 7, sampling_metho_default);
+							return 1; }));
+					}
+					
 					/*vary T*/
 					if (1) {
-						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
 							return experiment_element(data_name, "Exp_" + data_name + "_vary_T_1_" + to_string(ii) + ".csv", V, 3, b, tau, P_min, P_max, iteration_times / split_num,
-								true, true, true, 0, 0, true, true, one_edge_weight);
+								true, true, true, 0, 0, true, 0, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 						}));
-						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
 							return experiment_element(data_name, "Exp_" + data_name + "_vary_T_2_" + to_string(ii) + ".csv", V, 4, b, tau, P_min, P_max, iteration_times / split_num,
-								true, true, true, 0, 0, true, true, one_edge_weight);
+								true, true, true, 0, 0, true, 0, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 						}));
-						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
 							return experiment_element(data_name, "Exp_" + data_name + "_vary_T_3_" + to_string(ii) + ".csv", V, 6, b, tau, P_min, P_max, iteration_times / split_num,
-								true, true, true, 0, 0, true, true, one_edge_weight);
+								true, true, true, 0, 0, true, 0, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 						}));
 					}
 
 					/*vary b*/
 					if (1) {
-						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
 							return experiment_element(data_name, "Exp_" + data_name + "_vary_b_1_" + to_string(ii) + ".csv", V, T, 0.8, tau, P_min, P_max, iteration_times / split_num,
-								true, true, true, 0, 0, true, true, one_edge_weight);
+								true, true, true, 0, 0, true, 0, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 						}));
-						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
 							return experiment_element(data_name, "Exp_" + data_name + "_vary_b_2_" + to_string(ii) + ".csv", V, T, 0.85, tau, P_min, P_max, iteration_times / split_num,
-								true, true, true, 0, 0, true, true, one_edge_weight);
+								true, true, true, 0, 0, true, 0, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 						}));
-						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
 							return experiment_element(data_name, "Exp_" + data_name + "_vary_b_3_" + to_string(ii) + ".csv", V, T, 0.95, tau, P_min, P_max, iteration_times / split_num,
-								true, true, true, 0, 0, true, true, one_edge_weight);
+								true, true, true, 0, 0, true, 0, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 						}));
 					}
 
 					/*vary tau*/
 					if (1) {
-						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-							return experiment_element(data_name, "Exp_" + data_name + "_vary_tau_1_" + to_string(ii) + ".csv", V, T, b, 3, P_min, P_max, iteration_times / split_num,
-								0, true, 0, 0, 0, 0, 0, one_edge_weight);
+						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
+							return experiment_element(data_name, "Exp_" + data_name + "_vary_tau_1_" + to_string(ii) + ".csv", V, T, b, tau1, P_min, P_max, iteration_times / split_num,
+								0, true, 0, 0, 0, 0, 0, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 						}));
-						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-							return experiment_element(data_name, "Exp_" + data_name + "_vary_tau_2_" + to_string(ii) + ".csv", V, T, b, 5, P_min, P_max, iteration_times / split_num,
-								0, true, 0, 0, 0, 0, 0, one_edge_weight);
+						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
+							return experiment_element(data_name, "Exp_" + data_name + "_vary_tau_2_" + to_string(ii) + ".csv", V, T, b, tau2, P_min, P_max, iteration_times / split_num,
+								0, true, 0, 0, 0, 0, 0, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 						}));
-						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
-							return experiment_element(data_name, "Exp_" + data_name + "_vary_tau_3_" + to_string(ii) + ".csv", V, T, b, 7, P_min, P_max, iteration_times / split_num,
-								0, true, 0, 0, 0, 0, 0, one_edge_weight);
+						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
+							return experiment_element(data_name, "Exp_" + data_name + "_vary_tau_3_" + to_string(ii) + ".csv", V, T, b, tau3, P_min, P_max, iteration_times / split_num,
+								0, true, 0, 0, 0, 0, 0, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 						}));
 					}
 
 					/*vary P_min*/
 					if (1) {
-						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
 							return experiment_element(data_name, "Exp_" + data_name + "_vary_P_min_1_" + to_string(ii) + ".csv", V, T, b, tau, 0.4, P_max, iteration_times / split_num,
-								true, true, true, 0, 0, true, true, one_edge_weight);
+								true, true, true, 0, 0, true, 0, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 						}));
-						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
 							return experiment_element(data_name, "Exp_" + data_name + "_vary_P_min_2_" + to_string(ii) + ".csv", V, T, b, tau, 0.6, P_max, iteration_times / split_num,
-								true, true, true, 0, 0, true, true, one_edge_weight);
+								true, true, true, 0, 0, true, 0, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 						}));
-						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
 							return experiment_element(data_name, "Exp_" + data_name + "_vary_P_min_3_" + to_string(ii) + ".csv", V, T, b, tau, 0.7, P_max, iteration_times / split_num,
-								true, true, true, 0, 0, true, true, one_edge_weight);
+								true, true, true, 0, 0, true, 0, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 						}));
 					}
 
 					/*vary P_max*/
 					if (1) {
-						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
 							return experiment_element(data_name, "Exp_" + data_name + "_vary_P_max_1_" + to_string(ii) + ".csv", V, T, b, tau, P_min, 0.7, iteration_times / split_num,
-								true, true, true, 0, 0, true, true, one_edge_weight);
+								true, true, true, 0, 0, true, 0, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 						}));
-						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
 							return experiment_element(data_name, "Exp_" + data_name + "_vary_P_max_2_" + to_string(ii) + ".csv", V, T, b, tau, P_min, 0.8, iteration_times / split_num,
-								true, true, true, 0, 0, true, true, one_edge_weight);
+								true, true, true, 0, 0, true, 0, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 						}));
-						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight] {
+						results.emplace_back(pool.enqueue([data_name, V, T, b, tau, P_min, P_max, iteration_times, ii, split_num, one_edge_weight, heap_type_default, graph_search_type_default] {
 							return experiment_element(data_name, "Exp_" + data_name + "_vary_P_max_3_" + to_string(ii) + ".csv", V, T, b, tau, P_min, 1, iteration_times / split_num,
-								true, true, true, 0, 0, true, true, one_edge_weight);
+								true, true, true, 0, 0, true, 0, one_edge_weight, heap_type_default, graph_search_type_default, false, false, k_SOTA_default, sampling_metho_default);
 						}));
 					}
 
@@ -3512,20 +4443,22 @@ void experiments() {
 				for (auto&& result : results) {
 					result.get(); // wait for the below clear
 				}
-				results.clear();
+				std::vector<std::future<int>>().swap(results);
 				clear_global_PLL_indexes("dblp_1248891", one_edge_weight);
 			}
 
+
+			
+
 			clear_global_graphs("global_dblp_full_graph");
 			clear_global_graphs("global_dblp_small_graph");
-			
+
 		}
 
 	}
 
 }
 #pragma endregion experiments
-
 
 
 int main()

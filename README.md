@@ -1,5 +1,8 @@
 # Approximating Probabilistic Group Steiner Trees in Graphs
 
+This repository is for the following publication:
+Shuang Yang, Yahui Sun, Jiesong Liu, Xiaokui Xiao, Rong-Hua Li, and Zhewei Wei. “Approximating Probabilistic Group Steiner Trees in Graphs.” Proceedings of the VLDB Endowment (2022)
+
 The introduction of these files are as follows. 
 
 
